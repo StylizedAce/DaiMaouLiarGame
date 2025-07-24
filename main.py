@@ -367,4 +367,4 @@ def get_answers_http(room_id): # This can eventually be removed if answers are p
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
