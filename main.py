@@ -4,6 +4,7 @@ from threading import Lock, Thread
 import uuid
 import random
 import time
+import os
 
 app = Flask(__name__)
 # Configure SocketIO to use WebSocket. You might need to install 'eventlet' or 'gevent' for production use,
