@@ -4,7 +4,7 @@ import time
 import os
 import sys
 
-BASE = "http://localhost:5000"
+BASE = "https://daimaouliargame.onrender.com"
 
 sio = socketio.Client()
 player_id = None   # Will be set upon joining
