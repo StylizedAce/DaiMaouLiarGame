@@ -6,6 +6,7 @@ import random
 import time
 import os
 
+
 app = Flask(__name__)
 # Configure SocketIO to use WebSocket. You might need to install 'eventlet' or 'gevent' for production use,
 # but for development, the default (threading) is usually fine.
@@ -110,8 +111,8 @@ def handle_disconnect():
 
 @socketio.on('join_room')
 def on_join_room(data):
-    room_id = data.get("room_id")
-    name = data.get("name")
+    room_id = data.get("room_id") #lol
+    name = data.get("name")# Ace
     if not room_id or not name:
         emit('error', {'message': 'Room ID and name are required.'}, room=request.sid)
         return
@@ -154,6 +155,8 @@ def on_join_room(data):
         emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id)
         emit('lobby_event', {'message': f"{name} has joined the lobby."}, room=room_id)
         print(f"Player {name} ({player_id}) joined room {room_id}")
+
+
 @socketio.on('ready_up')
 def on_ready_up(data):
     room_id = data.get("room_id")
@@ -366,5 +369,10 @@ def get_answers_http(room_id): # This can eventually be removed if answers are p
     })
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
+    DEVELOPMENT = True
+    if not DEVELOPMENT:
+        port = int(os.environ.get("PORT", 5000))
+        socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
+
+    else:
+        socketio.run(app, port=5000, debug=True, allow_unsafe_werkzeug=True) # debug=True for development
