@@ -1,3 +1,4 @@
+# app.py (No significant changes from previous version, just re-included for completeness)
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from threading import Lock, Thread
@@ -81,7 +82,7 @@ def handle_disconnect():
     print(f"Client disconnected: {request.sid}")
     # Find which player/room this disconnected socket belonged to and remove them
     with lock:
-        for room_id, room in rooms.items():
+        for room_id, room in list(rooms.items()): # Iterate over a copy to allow modification
             for p_idx, p in enumerate(room["players"]):
                 if p.get("socket_id") == request.sid:
                     player_name = p["name"]
@@ -95,24 +96,29 @@ def handle_disconnect():
                     room["answers"].pop(player_id_to_remove, None)
                     room["votes"].pop(player_id_to_remove, None)
 
-                    # Notify others in the room
-                    emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id)
-                    emit('lobby_event', {'message': f"{player_name} has left the lobby."}, room=room_id)
+                    # If room is now empty, remove it
+                    if not room["players"]:
+                        del rooms[room_id]
+                        print(f"Room {room_id} is empty and removed.")
+                    else:
+                        # Notify others in the room
+                        emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id)
+                        emit('lobby_event', {'message': f"{player_name} has left the lobby."}, room=room_id)
 
-                    # If not enough players, reset state
-                    if len(room["players"]) < 3 and room["state"] != "waiting":
-                        room["state"] = "waiting"
-                        emit('game_state_change', {'state': 'waiting', 'message': 'Not enough players, waiting for more...'}, room=room_id)
-                        # Ensure any pending game start threads are stopped if applicable
-                        # (more complex for threading, but conceptually important)
+                        # If not enough players, reset state
+                        if len(room["players"]) < 3 and room["state"] != "waiting":
+                            room["state"] = "waiting"
+                            emit('game_state_change', {'state': 'waiting', 'message': 'Not enough players, waiting for more...'}, room=room_id)
+                            # Ensure any pending game start threads are stopped if applicable
+                            # (more complex for threading, but conceptually important)
 
                     print(f"Player {player_name} ({player_id_to_remove}) removed from room {room_id} due to disconnect.")
                     return # Player found and removed, exit loop
 
 @socketio.on('join_room')
 def on_join_room(data):
-    room_id = data.get("room_id") #lol
-    name = data.get("name")# Ace
+    room_id = data.get("room_id")
+    name = data.get("name")
     if not room_id or not name:
         emit('error', {'message': 'Room ID and name are required.'}, room=request.sid)
         return
@@ -133,6 +139,16 @@ def on_join_room(data):
             emit('error', {'message': 'Game already started in this room.'}, room=request.sid)
             return
 
+        # Check if a player with this socket_id is ALREADY in the room (e.g., page refresh)
+        existing_player = next((p for p in room["players"] if p["socket_id"] == request.sid), None)
+        if existing_player:
+            # If the player is already there with this socket, just reconfirm
+            print(f"Player {existing_player['name']} ({existing_player['id']}) reconnected to room {room_id}.")
+            emit('joined_confirmation', {'player_id': existing_player['id'], 'room_id': room_id}, room=request.sid)
+            emit('game_state_change', {'state': room["state"], 'message': 'Welcome back to the lobby!'}, room=request.sid)
+            emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id)
+            return
+
         if any(p["name"] == name for p in room["players"]):
             emit('error', {'message': 'Name already taken in this room.'}, room=request.sid)
             return
@@ -146,11 +162,9 @@ def on_join_room(data):
         # Emit confirmation back to the joining client
         emit('joined_confirmation', {'player_id': player_id, 'room_id': room_id}, room=request.sid)
 
-        # --- ADD THIS LINE ---
         # Emit the initial 'waiting' game state to the newly joined client
         emit('game_state_change', {'state': room["state"], 'message': 'Welcome to the lobby! Please ready up.'}, room=request.sid)
-        # --- END ADDITION ---
-
+        
         # Broadcast player list update and event to all clients in the room
         emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id)
         emit('lobby_event', {'message': f"{name} has joined the lobby."}, room=room_id)
@@ -160,7 +174,7 @@ def on_join_room(data):
 @socketio.on('ready_up')
 def on_ready_up(data):
     room_id = data.get("room_id")
-    player_id = data.get("player_id")
+    player_id = data.get("player_id") # We now expect player_id from the frontend
 
     with lock:
         room = rooms.get(room_id)
@@ -192,7 +206,7 @@ def on_ready_up(data):
 @socketio.on('cancel_ready')
 def on_cancel_ready(data):
     room_id = data.get("room_id")
-    player_id = data.get("player_id")
+    player_id = data.get("player_id") # We now expect player_id from the frontend
 
     with lock:
         room = rooms.get(room_id)
@@ -218,21 +232,26 @@ def on_cancel_ready(data):
         # Remove client from SocketIO room
         leave_room(room_id)
 
-        # Broadcast player list update and event
-        emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id)
-        emit('lobby_event', {'message': f"{player_name} has left the lobby."}, room=room_id)
-        print(f"Player {player_name} left room {room_id}")
+        # If room is now empty, remove it
+        if not room["players"]:
+            del rooms[room_id]
+            print(f"Room {room_id} is empty and removed after player {player_name} left.")
+        else:
+            # Broadcast player list update and event
+            emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id)
+            emit('lobby_event', {'message': f"{player_name} has left the lobby."}, room=room_id)
+            print(f"Player {player_name} left room {room_id}")
 
-        # Reset state if not enough players or if a player cancelled during countdown
-        if len(room["players"]) < 3 and room["state"] != "waiting":
-            room["state"] = "waiting"
-            for pid in room["ready"]: # Un-ready remaining players
-                room["ready"][pid] = False
-            emit('game_state_change', {'state': 'waiting', 'message': 'Not enough players, returning to waiting.'}, room=room_id)
-            emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id) # Update ready status
-            print(f"Room {room_id}: Not enough players, returned to waiting state.")
+            # Reset state if not enough players or if a player cancelled during countdown
+            if len(room["players"]) < 3 and room["state"] != "waiting":
+                room["state"] = "waiting"
+                for pid in room["ready"]: # Un-ready remaining players
+                    room["ready"][pid] = False
+                emit('game_state_change', {'state': 'waiting', 'message': 'Not enough players, returning to waiting.'}, room=room_id)
+                emit('player_list_update', {'players': get_players_info_for_room(room)}, room=room_id) # Update ready status
+                print(f"Room {room_id}: Not enough players, returned to waiting state.")
 
-    emit('cancelled_confirmation', {'message': 'You have left the room.'}, room=request.sid)
+        emit('cancelled_confirmation', {'message': 'You have left the room.'}, room=request.sid)
 
 
 def countdown_and_start_game(room_id):
@@ -281,9 +300,8 @@ def on_submit_answer(data):
 @socketio.on('submit_vote')
 def on_submit_vote(data):
     room_id = data.get("room_id")
-    # FIX THIS LINE:
-    player_id = data.get("player_id") # Removed the extra 'data = '
-    vote_for = data.get("vote_for")    # This will now correctly access the original 'data' dictionary
+    player_id = data.get("player_id") 
+    vote_for = data.get("vote_for") 
 
     with lock:
         room = rooms.get(room_id)
@@ -334,8 +352,8 @@ def on_submit_vote(data):
 
             results_data = {
                 "votes": {next((p["name"] for p in room["players"] if p["id"] == voter_id), "Unknown"):
-                          next((p["name"] for p in room["players"] if p["id"] == voted_for_id), "Unknown")
-                          for voter_id, voted_for_id in room["votes"].items()},
+                                  next((p["name"] for p in room["players"] if p["id"] == voted_for_id), "Unknown")
+                                  for voter_id, voted_for_id in room["votes"].items()},
                 "imposter": imposter_name,
                 "you_got_it": you_got_it,
                 "chosen_by_vote": chosen_name
