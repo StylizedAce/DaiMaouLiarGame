@@ -115,17 +115,20 @@ def handle_disconnect():
 def on_join_room(data):
     room_id = data.get("roomId")
     name = data.get("name")
-    if not room_id or not name:
-        emit('error_event', {'message': 'Room ID and name are required.'}, room=request.sid)
+    userAvatar = data.get("avatar")
+    print(f"Join request: {request.sid} for room {room_id} with name {name} and avatar {userAvatar}")
+    if not room_id or not name or not userAvatar:
+        emit('error_event', {'message': 'Room ID, name, and user avatar are required.'}, room=request.sid)
         return
 
+    # If validation passes, proceed to join the room
     with lock:
         room = rooms.get(room_id)
         if not room:
             # Create a new room if it doesn't exist
             player_id = str(uuid.uuid4())
             rooms[room_id] = {
-                "players": [{"id": player_id, "name": name, "socket_id": request.sid}],
+                "players": [{"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid}],
                 "host_id": player_id,  # First player is the host
                 "phase": "waiting",
                 "imposter_id": None,
@@ -140,15 +143,15 @@ def on_join_room(data):
             if any(p["name"] == name for p in room["players"]):
                 emit('error_event', {'message': 'That name is already taken.'}, room=request.sid)
                 return
-            
+
             player_id = str(uuid.uuid4())
-            room["players"].append({"id": player_id, "name": name, "socket_id": request.sid})
+            room["players"].append({"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid})
             room["lobby_events"].append(f"{name} has joined the game.")
-        
+
         join_room(room_id)
         # Send confirmation with their new ID
         emit('join_confirmation', {'playerId': player_id, 'roomId': room_id}, room=request.sid)
-        
+
     emit_state_update(room_id)
 
 @socketio.on('start_game')
