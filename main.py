@@ -42,6 +42,7 @@ def get_room_state(room_id):
                 {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "No answer")}
                 for p in room["players"]
             ]
+            state["mainQuestion"] = room["main_question"] # Add the main question here
         elif room["phase"] == "results":
             state["results"] = room["results"]
             # Also reveal the imposter's question
@@ -133,7 +134,8 @@ def on_join_room(data):
                 "phase": "waiting",
                 "imposter_id": None,
                 "roles": {}, "questions": {}, "answers": {}, "votes": {}, "results": {},
-                "lobby_events": [f"{name} created the room and is the host."]
+                "lobby_events": [f"{name} created the room and is the host."],
+                "main_question": None # Initialize main_question
             }
         else:
             # Join an existing room
@@ -181,6 +183,7 @@ def on_start_game(data):
             is_imposter = p["id"] == room["imposter_id"]
             room["roles"][p["id"]] = "imposter" if is_imposter else "normal"
             room["questions"][p["id"]] = q_pair[1] if is_imposter else q_pair[0]
+        room["main_question"] = q_pair[0] # Store the main question
 
         room["answers"], room["votes"], room["results"] = {}, {}, {}
         room["phase"] = "question"
