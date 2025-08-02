@@ -73,8 +73,8 @@ def handle_connect():
     print(f"Client connected: {request.sid}")
 
 @socketio.on('disconnect')
-def handle_disconnect():
-    print(f"Client disconnected: {request.sid}")
+def handle_disconnect(reason=None):
+    print(f"Client disconnected: {request.sid} (reason: {reason})")
     with lock:
         room_to_update = None
         for room_id, room in list(rooms.items()):
