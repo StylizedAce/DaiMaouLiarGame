@@ -156,6 +156,69 @@ def on_join_room(data):
 
     emit_state_update(room_id)
 
+@socketio.on('leave_room')
+def on_leave_room(data):
+    room_id = data.get("roomId")
+    player_id = data.get("playerId")
+    
+    print(f"Leave request: {request.sid} for room {room_id} with player ID {player_id}")
+    
+    if not room_id or not player_id:
+        emit('error_event', {'message': 'Room ID and player ID are required.'}, room=request.sid)
+        return
+
+    with lock:
+        room = rooms.get(room_id)
+        if not room:
+            emit('error_event', {'message': 'Room not found.'}, room=request.sid)
+            return
+        
+        # Find the player in the room
+        player_to_remove = next((p for p in room["players"] if p["id"] == player_id), None)
+        if not player_to_remove:
+            emit('error_event', {'message': 'Player not found in room.'}, room=request.sid)
+            return
+        
+        # Verify the socket ID matches (security check)
+        if player_to_remove.get("socket_id") != request.sid:
+            emit('error_event', {'message': 'Invalid player credentials.'}, room=request.sid)
+            return
+        
+        player_name = player_to_remove["name"]
+        
+        # Remove the player from the room
+        room["players"] = [p for p in room["players"] if p["id"] != player_id]
+        room["lobby_events"].append(f"{player_name} has left the game.")
+        
+        # Leave the socket room
+        leave_room(room_id)
+        
+        # Send confirmation to the leaving player
+        emit('leave_confirmation', {'message': 'Successfully left the room.'}, room=request.sid)
+        
+        # Check if room is now empty
+        if not room["players"]:
+            del rooms[room_id]
+            print(f"Room {room_id} is empty and has been removed.")
+            return
+        
+        # If the host left, assign a new host
+        if player_id == room["host_id"]:
+            room["host_id"] = room["players"][0]["id"]
+            new_host_name = room["players"][0]["name"]
+            room["lobby_events"].append(f"{new_host_name} is the new host.")
+        
+        # If game was in progress and now has too few players, reset it
+        if len(room["players"]) < 2 and room["phase"] != "waiting":
+            room["phase"] = "waiting"
+            # Reset game-specific fields
+            room["roles"], room["questions"], room["answers"], room["votes"], room["results"] = {}, {}, {}, {}, {}
+            room["imposter_id"] = None
+            room["lobby_events"].append("Not enough players. Returning to lobby.")
+    
+    # Update all remaining players in the room
+    emit_state_update(room_id)
+
 @socketio.on('start_game')
 def on_start_game(data):
     room_id = data.get("roomId")
