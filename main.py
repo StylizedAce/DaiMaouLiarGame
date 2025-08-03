@@ -33,7 +33,8 @@ def get_room_state(room_id):
             "phase": room["phase"],
             "players": room["players"],
             "hostId": room["host_id"],
-            "lobbyEvents": room["lobby_events"]
+            "lobbyEvents": room["lobby_events"],
+            "settings": room.get("settings", {})
         }
 
         # Add phase-specific data
@@ -223,10 +224,13 @@ def on_leave_room(data):
 def on_start_game(data):
     room_id = data.get("roomId")
     player_id = data.get("playerId")
+    settings = data.get("settings")
 
     with lock:
         room = rooms.get(room_id)
         if not room: return
+        room["settings"] = settings 
+
         
         # Validation: Only the host can start, and only with enough players
         if room["host_id"] != player_id:
