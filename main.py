@@ -5,6 +5,7 @@ from threading import Lock
 import uuid
 import random
 import os
+import time
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -39,10 +40,12 @@ def get_room_state(room_id):
 
         # Add phase-specific data
         if room["phase"] == "voting":
+            state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
             state["answers"] = [
                 {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "No answer")}
                 for p in room["players"]
             ]
+            
             state["mainQuestion"] = room["main_question"] # Add the main question here
         elif room["phase"] == "results":
             state["results"] = room["results"]
@@ -254,6 +257,7 @@ def on_start_game(data):
 
         room["answers"], room["votes"], room["results"] = {}, {}, {}
         room["phase"] = "question"
+        room["questionPhaseStartTimestamp"] = int(time.time() * 1000)
         room["lobby_events"].append("The game has started!")
 
     emit_state_update(room_id)
