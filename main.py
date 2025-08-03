@@ -337,9 +337,12 @@ def on_submit_vote(data):
 
     emit_state_update(room_id)
 
+@app.route('/', methods=['GET'])
+def index():
+    return "Welcome to the Dai Maou Liar Game!"
 
 if __name__ == "__main__":
-    DEVELOPMENT = False
+    DEVELOPMENT = True
     if not DEVELOPMENT:
         port = int(os.environ.get("PORT", 5000))
         socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
