@@ -284,8 +284,7 @@ def on_submit_answer(data):
         if not room or room["phase"] != "question": return
         room["answers"][player_id] = answer
         room["submitted"].add(player_id)
-
-        room["answers"][player_id] = answer
+        
         player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
         room["lobby_events"].append(f"{player_name} submitted their answer.")
 
