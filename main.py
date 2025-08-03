@@ -44,6 +44,7 @@ def get_room_state(room_id):
         # Add phase-specific data
         if room["phase"] == "voting":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
+            state["votingPhaseStartTimestamp"] = room.get("votingPhaseStartTimestamp")  # NEW LINE
             state["answers"] = [
                 {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "No answer")}
                 for p in room["players"]
@@ -284,6 +285,7 @@ def on_submit_answer(data):
         # Check if all players have answered
         if len(room["answers"]) == len(room["players"]):
             room["phase"] = "voting"
+            room["votingPhaseStartTimestamp"] = int(time.time() * 1000) - 1500  # NEW LINE
             room["lobby_events"].append("All answers are in! Time to vote.")
     
     emit_state_update(room_id)
