@@ -40,8 +40,6 @@ def get_room_state(room_id):
 
         if room["phase"] == "question":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
-            state["answers"] = room.get("answers", {})
-            state["submitted"] = list(room.get("submitted", set()))
 
         # Add phase-specific data
         if room["phase"] == "voting":
@@ -265,7 +263,6 @@ def on_start_game(data):
         room["main_question"] = q_pair[0] # Store the main question
 
         room["answers"], room["votes"], room["results"] = {}, {}, {}
-        room["submitted"] = set() # NEW LINE
         room["phase"] = "question"
         room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 1500  # subtract 1.5 seconds
         room["lobby_events"].append("The game has started!")
@@ -282,21 +279,21 @@ def on_submit_answer(data):
     with lock:
         room = rooms.get(room_id)
         if not room or room["phase"] != "question": return
+        if player_id in room["answers"]: return # Prevent re-submission
+
         room["answers"][player_id] = answer
-        room["submitted"].add(player_id)
-        
         player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
         room["lobby_events"].append(f"{player_name} submitted their answer.")
 
 
         emit_state_update(room_id)
-
+        
         # Check if all players have answered
         if len(room["answers"]) == len(room["players"]):
             room["phase"] = "voting"
             room["votingPhaseStartTimestamp"] = int(time.time() * 1000) - 1500  # NEW LINE
             room["lobby_events"].append("All answers are in! Time to vote.")
-            emit_state_update(room_id)
+
 
 @socketio.on('submit_vote')
 def on_submit_vote(data):
