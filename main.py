@@ -260,7 +260,7 @@ def on_start_game(data):
 
         room["answers"], room["votes"], room["results"] = {}, {}, {}
         room["phase"] = "question"
-        room["questionPhaseStartTimestamp"] = int(time.time() * 1000)
+        room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 1500  # subtract 1.5 seconds
         room["lobby_events"].append("The game has started!")
 
     emit_state_update(room_id)
