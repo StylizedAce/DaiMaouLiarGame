@@ -40,6 +40,7 @@ def get_room_state(room_id):
 
         if room["phase"] == "question":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
+            state["answers"] = room.get("answers", {})
 
         # Add phase-specific data
         if room["phase"] == "voting":
