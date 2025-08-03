@@ -264,6 +264,7 @@ def on_start_game(data):
         room["main_question"] = q_pair[0] # Store the main question
 
         room["answers"], room["votes"], room["results"] = {}, {}, {}
+        room["submitted"] = set() # NEW LINE
         room["phase"] = "question"
         room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 1500  # subtract 1.5 seconds
         room["lobby_events"].append("The game has started!")
@@ -280,7 +281,8 @@ def on_submit_answer(data):
     with lock:
         room = rooms.get(room_id)
         if not room or room["phase"] != "question": return
-        if player_id in room["answers"]: return # Prevent re-submission
+        room["answers"][player_id] = answer
+        room["submitted"].add(player_id)
 
         room["answers"][player_id] = answer
         player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
