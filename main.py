@@ -287,13 +287,13 @@ def on_submit_answer(data):
 
 
         emit_state_update(room_id)
-        
+
         # Check if all players have answered
         if len(room["answers"]) == len(room["players"]):
             room["phase"] = "voting"
             room["votingPhaseStartTimestamp"] = int(time.time() * 1000) - 1500  # NEW LINE
             room["lobby_events"].append("All answers are in! Time to vote.")
-
+            emit_state_update(room_id)
 
 @socketio.on('submit_vote')
 def on_submit_vote(data):
