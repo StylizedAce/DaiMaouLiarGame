@@ -40,7 +40,6 @@ def get_room_state(room_id):
 
         if room["phase"] == "question":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
-            state["answers"] = room.get("answers", {})
 
         # Add phase-specific data
         if room["phase"] == "voting":
@@ -112,8 +111,6 @@ def handle_disconnect(reason=None):
                     room["phase"] = "waiting"
                     # Reset game-specific fields
                     room["roles"], room["questions"], room["answers"], room["votes"], room["results"] = {}, {}, {}, {}, {}
-                    room["readyToVote"] = [] # NEW LINE
-                    room["readyToVote"] = []
                     room["imposter_id"] = None
                     room["lobby_events"].append("Not enough players. Returning to lobby.")
 
@@ -224,7 +221,6 @@ def on_leave_room(data):
             room["phase"] = "waiting"
             # Reset game-specific fields
             room["roles"], room["questions"], room["answers"], room["votes"], room["results"] = {}, {}, {}, {}, {}
-            room["readyToVote"] = [] # NEW LINE
             room["imposter_id"] = None
             room["lobby_events"].append("Not enough players. Returning to lobby.")
     
@@ -286,16 +282,13 @@ def on_submit_answer(data):
         player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
         room["lobby_events"].append(f"{player_name} submitted their answer.")
 
-        emit_state_update(room_id)
-        
-        
         # Check if all players have answered
         if len(room["answers"]) == len(room["players"]):
             room["phase"] = "voting"
             room["votingPhaseStartTimestamp"] = int(time.time() * 1000) - 2000  # NEW LINE
             room["lobby_events"].append("All answers are in! Time to vote.")
-
-        emit_state_update(room_id)
+    
+    emit_state_update(room_id)
 
 
 @socketio.on('update_settings')
