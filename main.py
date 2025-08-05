@@ -298,6 +298,21 @@ def on_submit_answer(data):
         emit_state_update(room_id)
 
 
+@socketio.on('update_settings')
+def on_update_settings(data):
+    room_id = data.get("roomId")
+    new_settings = data.get("settings")
+
+    with lock:
+        room = rooms.get(room_id)
+        if not room:
+            return
+
+        room["settings"] = new_settings
+        room["lobby_events"].append("Host updated the game settings.")
+
+    emit_state_update(room_id)
+
 @socketio.on('submit_vote')
 def on_submit_vote(data):
     room_id = data.get("roomId")
@@ -362,7 +377,7 @@ def index():
     return "Welcome to the Dai Maou Liar Game!"
 
 if __name__ == "__main__":
-    DEVELOPMENT = False
+    DEVELOPMENT = True
     if not DEVELOPMENT:
         port = int(os.environ.get("PORT", 5000))
         socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
