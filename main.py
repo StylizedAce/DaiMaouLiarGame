@@ -134,8 +134,8 @@ def on_join_room(data):
     with lock:
         room = rooms.get(room_id)
         if not room:
-            # Create a new room if it doesn't exist
-            player_id = str(uuid.uuid4())
+            emit('error_event', {'message': 'The room you were trying to reach doesn’t exist anymore.'}, room=request.sid)
+            return
             rooms[room_id] = {
                 "players": [{"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid}],
                 "host_id": player_id,  # First player is the host
@@ -145,6 +145,7 @@ def on_join_room(data):
                 "lobby_events": [f"{name} created the room and is the host."],
                 "main_question": None # Initialize main_question
             }
+            
         else:
             # Join an existing room
             if room["phase"] != "waiting":
@@ -164,6 +165,43 @@ def on_join_room(data):
 
     emit_state_update(room_id)
 
+@socketio.on('create_room')
+def on_create_room(data):
+    room_id = data.get("roomId")
+    name = data.get("name")
+    userAvatar = data.get("avatar")
+    print(f"Create room request: {request.sid} for room {room_id} with name {name} and avatar {userAvatar}")
+
+    if not room_id or not name or not userAvatar:
+        emit('error_event', {'message': 'Room ID, name, and user avatar are required.'}, room=request.sid)
+        return
+
+    with lock:
+        if room_id in rooms:
+            emit('error_event', {'message': 'Room already exists.'}, room=request.sid)
+            return
+
+        player_id = str(uuid.uuid4())
+        rooms[room_id] = {
+    "players": [{"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid}],
+    "host_id": player_id,  # First player is the host
+    "phase": "waiting",
+    "imposter_id": None,
+    "roles": {},
+    "questions": {},
+    "answers": {},
+    "votes": {},
+    "results": {},
+    "lobby_events": [f"{name} created the room and is the host."],
+    "main_question": None  # Initialize main_question
+}
+
+        join_room(room_id)
+        emit('join_confirmation', {'playerId': player_id, 'roomId': room_id}, room=request.sid)
+
+    emit_state_update(room_id)
+
+
 @socketio.on('leave_room')
 def on_leave_room(data):
     room_id = data.get("roomId")
@@ -178,7 +216,7 @@ def on_leave_room(data):
     with lock:
         room = rooms.get(room_id)
         if not room:
-            emit('error_event', {'message': 'Room not found.'}, room=request.sid)
+            emit('error_event', {'message': 'The room you were trying to reach doesn’t exist anymore.'}, room=request.sid)
             return
         
         # Find the player in the room
