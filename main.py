@@ -51,6 +51,7 @@ def get_room_state(room_id):
             ]
             
             state["mainQuestion"] = room["main_question"] # Add the main question here
+            state["ready_to_vote"] = room.get("ready_to_vote", [])
         elif room["phase"] == "results":
             state["results"] = room["results"]
             # Also reveal the imposter's question
@@ -412,6 +413,7 @@ def on_submit_vote(data):
 def index():
     return "Welcome to the Dai Maou Liar Game!"
 
+
 @socketio.on("kick_player")
 def handle_kick_player(data):
     room_id = data.get("roomId")
@@ -450,6 +452,34 @@ def handle_kick_player(data):
         print(f"Error disconnecting socket: {e}")
 
     # Emit full state update using the same logic as leave_room
+    emit_state_update(room_id)
+
+@socketio.on('ready_to_vote')
+def handle_ready_to_vote(data):
+    room_id = data.get('roomId')
+    player_id = data.get('playerId')
+
+    if not room_id or not player_id:
+        return
+
+    with lock:
+        room = rooms.get(room_id)
+        if not room:
+            return
+
+        # Ensure the list exists
+        if 'ready_to_vote' not in room:
+            room['ready_to_vote'] = []
+
+        # Add player if not already there
+        if player_id not in room['ready_to_vote']:
+            room['ready_to_vote'].append(player_id)
+
+        # Optionally auto-transition if all are ready
+        if len(room['ready_to_vote']) == len(room['players']):
+            print("All players are ready to vote!")
+
+    # Emit updated state using your existing logic
     emit_state_update(room_id)
 
 if __name__ == "__main__":
