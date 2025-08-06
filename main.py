@@ -464,23 +464,58 @@ def handle_ready_to_vote(data):
 
     with lock:
         room = rooms.get(room_id)
-        if not room:
+        if not room or room.get('phase') != 'voting':
             return
 
-        # Ensure the list exists
         if 'ready_to_vote' not in room:
             room['ready_to_vote'] = []
 
-        # Add player if not already there
         if player_id not in room['ready_to_vote']:
             room['ready_to_vote'].append(player_id)
+            print(f"[READY] {player_id} is ready to vote in {room_id}")
 
-        # Optionally auto-transition if all are ready
+        # ✅ If all players are ready, transition early
         if len(room['ready_to_vote']) == len(room['players']):
-            print("All players are ready to vote!")
+            print(f"[ALL READY] Skipping to vote_selection for room {room_id}")
+            transition_to_vote_selection(room_id)
 
-    # Emit updated state using your existing logic
+    check_voting_timeout_and_transition(room_id)  # ✅ fallback to timeout
     emit_state_update(room_id)
+
+def check_voting_timeout_and_transition(room_id):
+    with lock:
+        room = rooms.get(room_id)
+        if not room or room["phase"] != "voting":
+            return
+
+        start_ts = room.get("votingPhaseStartTimestamp")
+        duration_seconds = room.get("settings", {}).get("votingDuration", 180)  # fallback to 3 minutes if missing
+        duration_ms = duration_seconds * 1000
+
+        if not start_ts:
+            return
+
+        now = int(time.time() * 1000)
+        elapsed = now - start_ts
+
+        if elapsed >= duration_ms:
+            print(f"[TIMER EXPIRED] Voting phase expired for room {room_id}")
+            transition_to_vote_selection(room_id)
+
+def transition_to_vote_selection(room_id):
+    room = rooms.get(room_id)
+    if not room:
+        return
+
+    if room['phase'] != 'voting':
+        return  # Already transitioned
+
+    room['phase'] = 'vote_selection'
+    room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
+    room['votes'] = {}  # voter_id → target_id
+
+    emit_state_update(room_id)
+    print(f"Game {room_id} transitioned to vote_selection phase.")
 
 if __name__ == "__main__":
     DEVELOPMENT = True
