@@ -151,6 +151,11 @@ def on_join_room(data):
             if room["phase"] != "waiting":
                 emit('error_event', {'message': 'Game is already in progress.'}, room=request.sid)
                 return
+            max_players = room.get("settings", {}).get("playerCount", 6)  # default
+            if len(room["players"]) >= max_players:
+                emit('error_event', {'message': 'The room you were trying to reach seems full.'}, room=request.sid)
+                return
+
             if any(p["name"] == name for p in room["players"]):
                 emit('error_event', {'message': 'That name is already taken.'}, room=request.sid)
                 return
