@@ -407,6 +407,46 @@ def on_submit_vote(data):
 def index():
     return "Welcome to the Dai Maou Liar Game!"
 
+@socketio.on("kick_player")
+def handle_kick_player(data):
+    room_id = data.get("roomId")
+    target_player_id = data.get("targetPlayerId")
+    by_player_id = data.get("byPlayerId")
+
+    print(f"KICK request: {by_player_id} is trying to kick {target_player_id} from {room_id}")
+
+    with lock:
+        room = rooms.get(room_id)
+        if not room:
+            emit("error_event", {"message": "Room not found."}, room=request.sid)
+            return
+
+        if by_player_id != room["host_id"]:
+            emit("error_event", {"message": "Only the host can kick players."}, room=request.sid)
+            return
+
+        player_to_kick = next((p for p in room["players"] if p["id"] == target_player_id), None)
+        if not player_to_kick:
+            emit("error_event", {"message": "Player to kick not found."}, room=request.sid)
+            return
+
+        target_socket_id = player_to_kick["socket_id"]
+        player_name = player_to_kick["name"]
+
+        room["players"] = [p for p in room["players"] if p["id"] != target_player_id]
+        room["lobby_events"].append(f"{player_name} was kicked from the game.")
+
+    # Alert the kicked player
+    emit('kicked_from_room', {"message": "You have been removed from the game."}, to=target_socket_id)
+
+    try:
+        socketio.disconnect(target_socket_id)
+    except Exception as e:
+        print(f"Error disconnecting socket: {e}")
+
+    # Emit full state update using the same logic as leave_room
+    emit_state_update(room_id)
+
 if __name__ == "__main__":
     DEVELOPMENT = True
     if not DEVELOPMENT:
