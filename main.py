@@ -464,43 +464,23 @@ def handle_ready_to_vote(data):
 
     with lock:
         room = rooms.get(room_id)
-        if not room or room.get('phase') != 'voting':
+        if not room:
             return
 
+        # Ensure the list exists
         if 'ready_to_vote' not in room:
             room['ready_to_vote'] = []
 
+        # Add player if not already there
         if player_id not in room['ready_to_vote']:
             room['ready_to_vote'].append(player_id)
-            print(f"[READY] {player_id} is ready to vote in {room_id}")
 
-        # ✅ If all players are ready, transition early
+        # Optionally auto-transition if all are ready
         if len(room['ready_to_vote']) == len(room['players']):
-            print(f"[ALL READY] Skipping to vote_selection for room {room_id}")
-            transition_to_vote_selection(room_id)
+            print("All players are ready to vote!")
 
-    check_voting_timeout_and_transition(room_id)  # ✅ fallback to timeout
+    # Emit updated state using your existing logic
     emit_state_update(room_id)
-
-def check_voting_timeout_and_transition(room_id):
-    with lock:
-        room = rooms.get(room_id)
-        if not room or room["phase"] != "voting":
-            return
-
-        start_ts = room.get("votingPhaseStartTimestamp")
-        duration_seconds = room.get("settings", {}).get("votingDuration", 180)  # fallback to 3 minutes if missing
-        duration_ms = duration_seconds * 1000
-
-        if not start_ts:
-            return
-
-        now = int(time.time() * 1000)
-        elapsed = now - start_ts
-
-        if elapsed >= duration_ms:
-            print(f"[TIMER EXPIRED] Voting phase expired for room {room_id}")
-            transition_to_vote_selection(room_id)
 
 def transition_to_vote_selection(room_id):
     room = rooms.get(room_id)
