@@ -6,6 +6,7 @@ import uuid
 import random
 import os
 import time
+import pandas as pd
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -13,13 +14,29 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 lock = Lock()
 rooms = {}  # In-memory storage for game rooms
 
-QUESTION_PAIRS = [
+""" QUESTION_PAIRS = [
     ("What's your favorite type of food?", "What was the last thing you ate?"),
     ("What's your dream vacation?", "What's your next planned trip?"),
     ("What's your biggest fear?", "What's something you dislike?"),
     ("What's your favorite movie?", "What's the last movie you watched?"),
     ("What’s your favorite animal?", "What pet do you have?")
-]
+] """
+
+def get_question_pairs():
+    """
+    Returns a single random question pair (normal, imposter).
+    Tries to load from CSV, falls back to hardcoded pairs if not found.
+    """
+    try:
+        df = pd.read_csv('question_pairs.csv')
+        pairs = list(zip(df['Normal_Question'], df['Imposter_Question']))
+        if not pairs:
+            raise ValueError("No pairs found in CSV.")
+        return random.choice(pairs)
+    except Exception as e:
+        print(f"DEBUG: Could not load question_pairs.csv ({e}). Using default pairs.")
+        emit('error_event', {'message': 'Could not load question pairs. Using default pairs.'}, room=request.sid)
+
 
 def get_room_state(room_id):
     """ This function given a room ID can fetch the roomdata from the currently running rooms. It is used in every state emission"""
@@ -311,7 +328,7 @@ def on_start_game(data):
         # --- Start Game Logic ---
         players = room["players"]
         imposter = random.choice(players)
-        q_pair = random.choice(QUESTION_PAIRS)
+        q_pair = get_question_pairs()  # Fetch question pairs from CSV
         
         room["imposter_id"] = imposter["id"]
         for p in players:
