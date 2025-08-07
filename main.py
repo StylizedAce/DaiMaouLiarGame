@@ -63,6 +63,8 @@ def get_room_state(room_id):
             ]   
             state["mainQuestion"] = room["main_question"]
             state["ready_to_vote"] = room.get("ready_to_vote", [])
+            state["liarVotes"] = room.get("liarVotes", {})
+            state["imposterId"] = room.get("imposter_id")
 
 
 
@@ -519,7 +521,9 @@ def transition_to_vote_selection(room_id):
         room['phase'] = 'vote_selection'
         room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
         room["lobby_events"].append("Time to vote for the imposter!")
-    
+
+        room["liarVotes"] = {}
+
     # Emit outside the lock to avoid deadlock
     emit_state_update(room_id)
 
@@ -542,15 +546,50 @@ def emit_state_update(room_id):
     
 @socketio.on('voting_timer_expired')
 def handle_voting_timer_expired(data):
+    room_id = data['roomId']
+    print(f"🟡 Event received: voting_timer_expired for room {room_id}")
+
+    if room_id in rooms:
+        print(f"✅ Timer expired in voting phase — transitioning room {room_id}")
+        rooms[room_id]['phase'] = 'vote_selection'
+        rooms[room_id]['voteSelectionStartTimestamp'] = time.time()
+
+    emit_state_update(room_id)
+
+@socketio.on('liar_vote')
+def handle_liar_vote(data):
     room_id = data.get('roomId')
-    
+    voter_id = data.get('playerId')
+    target_id = data.get('targetId')
+
+    if not room_id or not voter_id or not target_id:
+        return
+
     with lock:
         room = rooms.get(room_id)
-        if not room or room['phase'] != 'voting':
+        if not room or room['phase'] != 'vote_selection':
             return
-            
-        print(f"Voting timer expired for room {room_id}")
-        transition_to_vote_selection(room_id)
+
+        # Use liarVotes instead of results
+        if 'liarVotes' not in room:
+            room['liarVotes'] = {}
+
+        # Remove previous vote by this player (in case of vote switch)
+        for voters in room['liarVotes'].values():
+            if voter_id in voters:
+                voters.remove(voter_id)
+
+
+        if target_id not in room['liarVotes']:
+            room['liarVotes'][target_id] = []
+
+        room['liarVotes'][target_id].append(voter_id)
+
+        voter_name = next((p["name"] for p in room["players"] if p["id"] == voter_id), "Someone")
+        target_name = next((p["name"] for p in room["players"] if p["id"] == target_id), "Unknown")
+        room["lobby_events"].append(f"{voter_name} voted for {target_name}.")
+
+    emit_state_update(room_id)
 
 if __name__ == "__main__":
     DEVELOPMENT = True
