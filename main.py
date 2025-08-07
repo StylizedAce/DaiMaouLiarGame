@@ -52,6 +52,20 @@ def get_room_state(room_id):
             
             state["mainQuestion"] = room["main_question"] # Add the main question here
             state["ready_to_vote"] = room.get("ready_to_vote", [])
+
+        elif room["phase"] == "vote_selection":
+            state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
+            state["votingPhaseStartTimestamp"] = room.get("votingPhaseStartTimestamp")
+            state["voteSelectionStartTimestamp"] = room.get("voteSelectionStartTimestamp")
+            state["answers"] = [
+                {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "No answer")}
+                for p in room["players"]
+            ]   
+            state["mainQuestion"] = room["main_question"]
+            state["ready_to_vote"] = room.get("ready_to_vote", [])
+
+
+
         elif room["phase"] == "results":
             state["results"] = room["results"]
             # Also reveal the imposter's question
@@ -64,6 +78,8 @@ def emit_state_update(room_id):
     """Emits the full game state to all clients in a room."""
     room_state = get_room_state(room_id)
     if room_state:
+        print(f"DEBUG: Emitting state update for room {room_id}. Phase: {room_state.get('phase')}")
+        
         # Emit general state to the room
         socketio.emit('update_game_state', room_state, room=room_id)
 
@@ -76,6 +92,8 @@ def emit_state_update(room_id):
                     "question": room["questions"].get(p["id"])
                 }
                 socketio.emit('personal_game_info', personal_info, room=p["socket_id"])
+    else:
+        print(f"DEBUG: No room state found for room {room_id}")
 
 @socketio.on('connect')
 def handle_connect():
@@ -199,7 +217,8 @@ def on_create_room(data):
     "votes": {},
     "results": {},
     "lobby_events": [f"{name} created the room and is the host."],
-    "main_question": None  # Initialize main_question
+    "main_question": None,  # Initialize main_question
+    'ready_to_vote': []
 }
 
         join_room(room_id)
@@ -331,6 +350,7 @@ def on_submit_answer(data):
             room["phase"] = "voting"
             room["votingPhaseStartTimestamp"] = int(time.time() * 1000) - 2000  # NEW LINE
             room["lobby_events"].append("All answers are in! Time to vote.")
+            room['ready_to_vote'] = [] 
     
     emit_state_update(room_id)
 
@@ -454,6 +474,7 @@ def handle_kick_player(data):
     # Emit full state update using the same logic as leave_room
     emit_state_update(room_id)
 
+
 @socketio.on('ready_to_vote')
 def handle_ready_to_vote(data):
     room_id = data.get('roomId')
@@ -474,28 +495,62 @@ def handle_ready_to_vote(data):
         # Add player if not already there
         if player_id not in room['ready_to_vote']:
             room['ready_to_vote'].append(player_id)
+            player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
+            room["lobby_events"].append(f"{player_name} is ready to vote.")
 
-        # Optionally auto-transition if all are ready
-        if len(room['ready_to_vote']) == len(room['players']):
-            print("All players are ready to vote!")
-
-    # Emit updated state using your existing logic
+    # Emit state update first
     emit_state_update(room_id)
+    
+    # Then check if we need to transition (do this after emit to avoid race conditions)
+    room = rooms.get(room_id)
+    if room and len(room.get('ready_to_vote', [])) == len(room['players']):
+        transition_to_vote_selection(room_id)
 
 def transition_to_vote_selection(room_id):
-    room = rooms.get(room_id)
-    if not room:
-        return
-
-    if room['phase'] != 'voting':
-        return  # Already transitioned
-
-    room['phase'] = 'vote_selection'
-    room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
-    room['votes'] = {}  # voter_id → target_id
-
+    with lock:
+        room = rooms.get(room_id)
+        if not room:
+            return
+        
+        # Only transition if we're currently in voting phase
+        if room['phase'] != 'voting':
+            return
+        
+        room['phase'] = 'vote_selection'
+        room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
+        room["lobby_events"].append("Time to vote for the imposter!")
+    
+    # Emit outside the lock to avoid deadlock
     emit_state_update(room_id)
-    print(f"Game {room_id} transitioned to vote_selection phase.")
+
+def emit_state_update(room_id):
+    """Emits the full game state to all clients in a room."""
+    room_state = get_room_state(room_id)
+    if room_state:
+        # Emit general state to the room
+        socketio.emit('update_game_state', room_state, room=room_id)
+
+        # Emit personal info (role, question) to each player individually
+        room = rooms.get(room_id)
+        if room and room["phase"] == "question":
+            for p in room["players"]:
+                personal_info = {
+                    "role": room["roles"].get(p["id"]),
+                    "question": room["questions"].get(p["id"])
+                }
+                socketio.emit('personal_game_info', personal_info, room=p["socket_id"])
+    
+@socketio.on('voting_timer_expired')
+def handle_voting_timer_expired(data):
+    room_id = data.get('roomId')
+    
+    with lock:
+        room = rooms.get(room_id)
+        if not room or room['phase'] != 'voting':
+            return
+            
+        print(f"Voting timer expired for room {room_id}")
+        transition_to_vote_selection(room_id)
 
 if __name__ == "__main__":
     DEVELOPMENT = True
