@@ -40,6 +40,11 @@ def get_room_state(room_id):
 
         if room["phase"] == "question":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
+            state["submittedCount"] = len(room.get("answers", {}))
+            state["answers"] = [
+                {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "")}
+                for p in room["players"] if p["id"] in room.get("answers", {})
+            ]
 
         # Add phase-specific data
         if room["phase"] == "voting":
@@ -332,11 +337,16 @@ def on_submit_answer(data):
     with lock:
         room = rooms.get(room_id)
         if not room or room["phase"] != "question": return
-        if player_id in room["answers"]: return # Prevent re-submission
 
+        is_new_submission = player_id not in room["answers"]
         room["answers"][player_id] = answer
+
         player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
-        room["lobby_events"].append(f"{player_name} submitted their answer.")
+
+        if is_new_submission:
+            room["lobby_events"].append(f"{player_name} submitted their answer.")
+        else:
+            room["lobby_events"].append(f"{player_name} updated their answer.")
 
         # Check if all players have answered
         if len(room["answers"]) == len(room["players"]):
