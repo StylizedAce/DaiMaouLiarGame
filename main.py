@@ -22,20 +22,46 @@ rooms = {}  # In-memory storage for game rooms
     ("What’s your favorite animal?", "What pet do you have?")
 ] """
 
-def get_question_pairs():
+def get_question_pair(used_indexes=None):
     """
-    Returns a single random question pair (normal, imposter).
-    Tries to load from CSV, falls back to hardcoded pairs if not found.
+    Returns a single random question pair (normal, imposter) and its index.
+    Avoids previously used indexes for the current room session.
+    
+    Args:
+        used_indexes (list): List of question indexes already used in this room session
+        
+    Returns:
+        tuple: ((normal_question, imposter_question), selected_index)
     """
+    if used_indexes is None:
+        used_indexes = []
+    
     try:
         df = pd.read_csv('question_pairs.csv')
-        pairs = list(zip(df['Normal_Question'], df['Imposter_Question']))
-        if not pairs:
-            raise ValueError("No pairs found in CSV.")
-        return random.choice(pairs)
+        if df.empty:
+            raise ValueError("CSV file is empty.")
+        
+        # Get available indexes (excluding used ones)
+        all_indexes = list(range(len(df)))
+        available_indexes = [i for i in all_indexes if i not in used_indexes]
+        
+        if not available_indexes:
+            print("WARNING: All questions have been used. Resetting question pool.")
+            available_indexes = all_indexes  # Reset if all questions used
+        
+        # Pick random available index
+        selected_index = random.choice(available_indexes)
+        
+        # Get the question pair
+        row = df.iloc[selected_index]
+        question_pair = (row['Normal_Question'], row['Imposter_Question'])
+        
+        print(f"DEBUG: Selected question index {selected_index}: {question_pair[0]}")
+        return question_pair
+        
     except Exception as e:
         print(f"DEBUG: Could not load question_pairs.csv ({e}). Using default pairs.")
-        emit('error_event', {'message': 'Could not load question pairs. Using default pairs.'}, room=request.sid)
+        emit('error_event', {'message': 'Could not load question pairs. Please try again later.'}, room=request.sid)
 
 
 def get_room_state(room_id):
@@ -328,7 +354,7 @@ def on_start_game(data):
         # --- Start Game Logic ---
         players = room["players"]
         imposter = random.choice(players)
-        q_pair = get_question_pairs()  # Fetch question pairs from CSV
+        q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []))
         
         room["imposter_id"] = imposter["id"]
         for p in players:
