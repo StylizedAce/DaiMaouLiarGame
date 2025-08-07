@@ -22,7 +22,7 @@ QUESTION_PAIRS = [
 ]
 
 def get_room_state(room_id):
-    """Constructs the complete state payload for a room."""
+    """ This function given a room ID can fetch the roomdata from the currently running rooms. It is used in every state emission"""
     with lock:
         room = rooms.get(room_id)
         if not room:
@@ -157,15 +157,6 @@ def on_join_room(data):
         if not room:
             emit('error_event', {'message': 'The room you were trying to reach doesn’t exist anymore.'}, room=request.sid)
             return
-            rooms[room_id] = {
-                "players": [{"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid}],
-                "host_id": player_id,  # First player is the host
-                "phase": "waiting",
-                "imposter_id": None,
-                "roles": {}, "questions": {}, "answers": {}, "votes": {}, "results": {},
-                "lobby_events": [f"{name} created the room and is the host."],
-                "main_question": None # Initialize main_question
-            }
             
         else:
             # Join an existing room
@@ -526,23 +517,6 @@ def transition_to_vote_selection(room_id):
 
     # Emit outside the lock to avoid deadlock
     emit_state_update(room_id)
-
-def emit_state_update(room_id):
-    """Emits the full game state to all clients in a room."""
-    room_state = get_room_state(room_id)
-    if room_state:
-        # Emit general state to the room
-        socketio.emit('update_game_state', room_state, room=room_id)
-
-        # Emit personal info (role, question) to each player individually
-        room = rooms.get(room_id)
-        if room and room["phase"] == "question":
-            for p in room["players"]:
-                personal_info = {
-                    "role": room["roles"].get(p["id"]),
-                    "question": room["questions"].get(p["id"])
-                }
-                socketio.emit('personal_game_info', personal_info, room=p["socket_id"])
     
 @socketio.on('voting_timer_expired')
 def handle_voting_timer_expired(data):
