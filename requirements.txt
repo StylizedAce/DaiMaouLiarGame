@@ -4,3 +4,4 @@ eventlet
 uuid
 python-socketio
 requests
+pandas
