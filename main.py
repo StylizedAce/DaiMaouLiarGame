@@ -430,48 +430,6 @@ def on_submit_vote(data):
         room["votes"][voter_id] = voted_for_id
         voter_name = next((p["name"] for p in room["players"] if p["id"] == voter_id), "Someone")
         room["lobby_events"].append(f"{voter_name} has cast their vote.")
-        
-        # Check if all players have voted
-        if len(room["votes"]) == len(room["players"]):
-            room["phase"] = "results"
-            room["lobby_events"].append("The votes are in! Here are the results.")
-
-            # --- Calculate Results ---
-            vote_counts = {p["id"]: 0 for p in room["players"]}
-            for voted_id in room["votes"].values():
-                if voted_id in vote_counts:
-                    vote_counts[voted_id] += 1
-            
-            imposter_id = room["imposter_id"]
-            imposter_name = next((p["name"] for p in room["players"] if p["id"] == imposter_id), "N/A")
-
-            # Determine who was voted out
-            max_votes = -1
-            voted_out_id = None
-            if vote_counts:
-                max_votes = max(vote_counts.values())
-                # Note: This simple logic picks the first player in case of a tie.
-                voted_out_id = next((pid for pid, count in vote_counts.items() if count == max_votes), None)
-            
-            voted_out_name = next((p["name"] for p in room["players"] if p["id"] == voted_out_id), "No one")
-
-            # Determine the winner
-            imposter_found = voted_out_id == imposter_id
-            winner_message = f"You got it! {imposter_name} was the imposter." if imposter_found else f"The imposter got away! It was {imposter_name}."
-
-            room["results"] = {
-                "imposterId": imposter_id,
-                "imposterName": imposter_name,
-                "votedOutName": voted_out_name,
-                "imposterFound": imposter_found,
-                "winnerMessage": winner_message,
-                "votes": [
-                    {
-                        "voterName": next((p["name"] for p in room["players"] if p["id"] == vid), "N/A"),
-                        "votedForName": next((p["name"] for p in room["players"] if p["id"] == vfid), "N/A")
-                    } for vid, vfid in room["votes"].items()
-                ]
-            }
 
     emit_state_update(room_id)
 
