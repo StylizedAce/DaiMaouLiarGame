@@ -645,6 +645,25 @@ def get_mayhem_impostor_count(player_count):
         else:  # 30%
             return player_count // 3  # One-third are impostors
 
+@socketio.on('remove_answer')
+def on_remove_answer(data):
+    room_id = data.get("roomId")
+    player_id = data.get("playerId")
+
+    with lock:
+        room = rooms.get(room_id)
+        if not room or room["phase"] != "question": 
+            return
+
+        # Remove the player's answer
+        if player_id in room["answers"]:
+            del room["answers"][player_id]
+            
+            player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
+            room["lobby_events"].append(f"{player_name} is editing their answer.")
+
+    emit_state_update(room_id)
+
 if __name__ == "__main__":
     DEVELOPMENT = True
     if not DEVELOPMENT:
