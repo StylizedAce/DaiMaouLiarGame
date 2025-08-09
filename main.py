@@ -7,19 +7,218 @@ import random
 import os
 import time
 import pandas as pd
+import sqlite3
+import json
+import atexit
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 lock = Lock()
-rooms = {}  # In-memory storage for game rooms
+
+# SQLite database setup
+DB_PATH = 'game_rooms.db'
+
+def init_database():
+    """Initialize the SQLite database with required tables."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Create rooms table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rooms (
+            room_id TEXT PRIMARY KEY,
+            players TEXT NOT NULL,  -- JSON string
+            host_id TEXT NOT NULL,
+            phase TEXT NOT NULL DEFAULT 'waiting',
+            imposter_id TEXT,
+            roles TEXT,  -- JSON string
+            questions TEXT,  -- JSON string
+            answers TEXT,  -- JSON string
+            votes TEXT,  -- JSON string
+            results TEXT,  -- JSON string
+            lobby_events TEXT,  -- JSON string
+            main_question TEXT,
+            ready_to_vote TEXT,  -- JSON string
+            settings TEXT,  -- JSON string
+            question_phase_start_timestamp INTEGER,
+            voting_phase_start_timestamp INTEGER,
+            vote_selection_start_timestamp INTEGER,
+            liar_votes TEXT,  -- JSON string
+            used_question_indexes TEXT  -- JSON string
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+def cleanup_database():
+    """Remove the database file on shutdown for fresh slate."""
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+        print("Database cleaned up for fresh slate.")
+
+# Initialize database on startup
+init_database()
+
+# Register cleanup function to run on shutdown
+atexit.register(cleanup_database)
+
+def get_db_connection():
+    """Get a database connection."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # This enables column access by name
+    return conn
+
+def create_room_in_db(room_id, room_data):
+    """Create a new room in the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        INSERT INTO rooms (
+            room_id, players, host_id, phase, imposter_id, roles, questions,
+            answers, votes, results, lobby_events, main_question, ready_to_vote,
+            settings, question_phase_start_timestamp, voting_phase_start_timestamp,
+            vote_selection_start_timestamp, liar_votes, used_question_indexes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        room_id,
+        json.dumps(room_data.get('players', [])),
+        room_data.get('host_id', ''),
+        room_data.get('phase', 'waiting'),
+        room_data.get('imposter_id'),
+        json.dumps(room_data.get('roles', {})),
+        json.dumps(room_data.get('questions', {})),
+        json.dumps(room_data.get('answers', {})),
+        json.dumps(room_data.get('votes', {})),
+        json.dumps(room_data.get('results', {})),
+        json.dumps(room_data.get('lobby_events', [])),
+        room_data.get('main_question'),
+        json.dumps(room_data.get('ready_to_vote', [])),
+        json.dumps(room_data.get('settings', {})),
+        room_data.get('questionPhaseStartTimestamp'),
+        room_data.get('votingPhaseStartTimestamp'),
+        room_data.get('voteSelectionStartTimestamp'),
+        json.dumps(room_data.get('liarVotes', {})),
+        json.dumps(room_data.get('used_question_indexes', []))
+    ))
+    
+    conn.commit()
+    conn.close()
+
+def get_room_from_db(room_id):
+    """Get a room from the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM rooms WHERE room_id = ?', (room_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return None
+    
+    # Convert back to dictionary format
+    room_data = {
+        'players': json.loads(row['players']),
+        'host_id': row['host_id'],
+        'phase': row['phase'],
+        'imposter_id': row['imposter_id'],
+        'roles': json.loads(row['roles']),
+        'questions': json.loads(row['questions']),
+        'answers': json.loads(row['answers']),
+        'votes': json.loads(row['votes']),
+        'results': json.loads(row['results']),
+        'lobby_events': json.loads(row['lobby_events']),
+        'main_question': row['main_question'],
+        'ready_to_vote': json.loads(row['ready_to_vote']),
+        'settings': json.loads(row['settings']),
+        'questionPhaseStartTimestamp': row['question_phase_start_timestamp'],
+        'votingPhaseStartTimestamp': row['voting_phase_start_timestamp'],
+        'voteSelectionStartTimestamp': row['vote_selection_start_timestamp'],
+        'liarVotes': json.loads(row['liar_votes']),
+        'used_question_indexes': json.loads(row['used_question_indexes'])
+    }
+    
+    return room_data
+
+def update_room_in_db(room_id, room_data):
+    """Update a room in the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        UPDATE rooms SET
+            players = ?, host_id = ?, phase = ?, imposter_id = ?, roles = ?,
+            questions = ?, answers = ?, votes = ?, results = ?, lobby_events = ?,
+            main_question = ?, ready_to_vote = ?, settings = ?,
+            question_phase_start_timestamp = ?, voting_phase_start_timestamp = ?,
+            vote_selection_start_timestamp = ?, liar_votes = ?, used_question_indexes = ?
+        WHERE room_id = ?
+    ''', (
+        json.dumps(room_data.get('players', [])),
+        room_data.get('host_id', ''),
+        room_data.get('phase', 'waiting'),
+        room_data.get('imposter_id'),
+        json.dumps(room_data.get('roles', {})),
+        json.dumps(room_data.get('questions', {})),
+        json.dumps(room_data.get('answers', {})),
+        json.dumps(room_data.get('votes', {})),
+        json.dumps(room_data.get('results', {})),
+        json.dumps(room_data.get('lobby_events', [])),
+        room_data.get('main_question'),
+        json.dumps(room_data.get('ready_to_vote', [])),
+        json.dumps(room_data.get('settings', {})),
+        room_data.get('questionPhaseStartTimestamp'),
+        room_data.get('votingPhaseStartTimestamp'),
+        room_data.get('voteSelectionStartTimestamp'),
+        json.dumps(room_data.get('liarVotes', {})),
+        json.dumps(room_data.get('used_question_indexes', [])),
+        room_id
+    ))
+    
+    conn.commit()
+    conn.close()
+
+def delete_room_from_db(room_id):
+    """Delete a room from the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('DELETE FROM rooms WHERE room_id = ?', (room_id,))
+    
+    conn.commit()
+    conn.close()
+
+def get_all_room_ids():
+    """Get all room IDs from the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT room_id FROM rooms')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [row['room_id'] for row in rows]
+
+def room_exists_in_db(room_id):
+    """Check if a room exists in the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT 1 FROM rooms WHERE room_id = ?', (room_id,))
+    exists = cursor.fetchone() is not None
+    conn.close()
+    
+    return exists
 
 """ QUESTION_PAIRS = [
     ("What's your favorite type of food?", "What was the last thing you ate?"),
     ("What's your dream vacation?", "What's your next planned trip?"),
     ("What's your biggest fear?", "What's something you dislike?"),
     ("What's your favorite movie?", "What's the last movie you watched?"),
-    ("What’s your favorite animal?", "What pet do you have?")
+    ("What's your favorite animal?", "What pet do you have?")
 ] """
 
 def get_question_pair(used_indexes=None):
@@ -61,13 +260,14 @@ def get_question_pair(used_indexes=None):
         
     except Exception as e:
         print(f"DEBUG: Could not load question_pairs.csv ({e}). Using default pairs.")
-        emit('error_event', {'message': 'Could not load question pairs. Please try again later.'}, room=request.sid)
+        # Can't emit error here as there's no request context
+        return None  # Return None to indicate failure
 
 
 def get_room_state(room_id):
     """ This function given a room ID can fetch the roomdata from the currently running rooms. It is used in every state emission"""
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room:
             return None
 
@@ -97,7 +297,6 @@ def get_room_state(room_id):
                 {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "No answer")}
                 for p in room["players"]
             ]
-            
             state["mainQuestion"] = room["main_question"] # Add the main question here
             state["ready_to_vote"] = room.get("ready_to_vote", [])
 
@@ -114,13 +313,10 @@ def get_room_state(room_id):
             state["liarVotes"] = room.get("liarVotes", {})
             state["imposterId"] = room.get("imposter_id")
 
-
-
         elif room["phase"] == "results":
             state["results"] = room["results"]
             # Also reveal the imposter's question
             state["questions"] = room["questions"]
-
 
         return state
 
@@ -134,7 +330,7 @@ def emit_state_update(room_id):
         socketio.emit('update_game_state', room_state, room=room_id)
 
         # Emit personal info (role, question) to each player individually
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if room and room["phase"] == "question":
             for p in room["players"]:
                 personal_info = {
@@ -154,7 +350,11 @@ def handle_disconnect(reason=None):
     print(f"Client disconnected: {request.sid} (reason: {reason})")
     with lock:
         room_to_update = None
-        for room_id, room in list(rooms.items()):
+        for room_id in get_all_room_ids():
+            room = get_room_from_db(room_id)
+            if not room:
+                continue
+                
             player_to_remove = next((p for p in room["players"] if p.get("socket_id") == request.sid), None)
 
             if player_to_remove:
@@ -165,7 +365,7 @@ def handle_disconnect(reason=None):
                 room["lobby_events"].append(f"{player_name} has left the game.")
                 
                 if not room["players"]:
-                    del rooms[room_id]
+                    delete_room_from_db(room_id)
                     print(f"Room {room_id} is empty and has been removed.")
                     return
                 
@@ -183,6 +383,8 @@ def handle_disconnect(reason=None):
                     room["imposter_id"] = None
                     room["lobby_events"].append("Not enough players. Returning to lobby.")
 
+                # Update the room in database
+                update_room_in_db(room_id, room)
                 room_to_update = room_id
                 break
     
@@ -201,9 +403,9 @@ def on_join_room(data):
 
     # If validation passes, proceed to join the room
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room:
-            emit('error_event', {'message': 'The room you were trying to reach doesn’t exist anymore.'}, room=request.sid)
+            emit('error_event', {'message': 'The room you were trying to reach doesn\'t exist anymore.'}, room=request.sid)
             return
             
         else:
@@ -223,6 +425,9 @@ def on_join_room(data):
             player_id = str(uuid.uuid4())
             room["players"].append({"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid})
             room["lobby_events"].append(f"{name} has joined the game.")
+            
+            # Update room in database
+            update_room_in_db(room_id, room)
 
         join_room(room_id)
         # Send confirmation with their new ID
@@ -242,25 +447,28 @@ def on_create_room(data):
         return
 
     with lock:
-        if room_id in rooms:
+        if room_exists_in_db(room_id):
             emit('error_event', {'message': 'Room already exists.'}, room=request.sid)
             return
 
         player_id = str(uuid.uuid4())
-        rooms[room_id] = {
-    "players": [{"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid}],
-    "host_id": player_id,  # First player is the host
-    "phase": "waiting",
-    "imposter_id": None,
-    "roles": {},
-    "questions": {},
-    "answers": {},
-    "votes": {},
-    "results": {},
-    "lobby_events": [f"{name} created the room and is the host."],
-    "main_question": None,  # Initialize main_question
-    'ready_to_vote': []
-}
+        room_data = {
+            "players": [{"id": player_id, "name": name, "avatar": userAvatar, "socket_id": request.sid}],
+            "host_id": player_id,  # First player is the host
+            "phase": "waiting",
+            "imposter_id": None,
+            "roles": {},
+            "questions": {},
+            "answers": {},
+            "votes": {},
+            "results": {},
+            "lobby_events": [f"{name} created the room and is the host."],
+            "main_question": None,  # Initialize main_question
+            'ready_to_vote': []
+        }
+        
+        # Create room in database
+        create_room_in_db(room_id, room_data)
 
         join_room(room_id)
         emit('join_confirmation', {'playerId': player_id, 'roomId': room_id}, room=request.sid)
@@ -280,9 +488,9 @@ def on_leave_room(data):
         return
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room:
-            emit('error_event', {'message': 'The room you were trying to reach doesn’t exist anymore.'}, room=request.sid)
+            emit('error_event', {'message': 'The room you were trying to reach doesn\'t exist anymore.'}, room=request.sid)
             return
         
         # Find the player in the room
@@ -310,7 +518,7 @@ def on_leave_room(data):
         
         # Check if room is now empty
         if not room["players"]:
-            del rooms[room_id]
+            delete_room_from_db(room_id)
             print(f"Room {room_id} is empty and has been removed.")
             return
         
@@ -328,6 +536,9 @@ def on_leave_room(data):
             room["imposter_id"] = None
             room["lobby_events"].append("Not enough players. Returning to lobby.")
     
+        # Update room in database
+        update_room_in_db(room_id, room)
+    
     # Update all remaining players in the room
     emit_state_update(room_id)
 
@@ -338,7 +549,7 @@ def on_start_game(data):
     settings = data.get("settings")
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room: return
         room["settings"] = settings 
 
@@ -356,6 +567,10 @@ def on_start_game(data):
         imposter = random.choice(players)
         q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []))
         
+        if q_pair is None:
+            emit('error_event', {'message': 'Could not load questions. Please try again.'}, room=request.sid)
+            return
+        
         room["imposter_id"] = imposter["id"]
         for p in players:
             is_imposter = p["id"] == room["imposter_id"]
@@ -367,6 +582,9 @@ def on_start_game(data):
         room["phase"] = "question"
         room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000 # subtract 1.5 seconds
         room["lobby_events"].append("The game has started!")
+        
+        # Update room in database
+        update_room_in_db(room_id, room)
 
     emit_state_update(room_id)
 
@@ -378,7 +596,7 @@ def on_submit_answer(data):
     answer = data.get("answer")
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room or room["phase"] != "question": return
 
         is_new_submission = player_id not in room["answers"]
@@ -397,6 +615,9 @@ def on_submit_answer(data):
             room["votingPhaseStartTimestamp"] = int(time.time() * 1000) - 2000  # NEW LINE
             room["lobby_events"].append("All answers are in! Time to vote.")
             room['ready_to_vote'] = [] 
+            
+        # Update room in database
+        update_room_in_db(room_id, room)
     
     emit_state_update(room_id)
 
@@ -407,12 +628,15 @@ def on_update_settings(data):
     new_settings = data.get("settings")
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room:
             return
 
         room["settings"] = new_settings
         room["lobby_events"].append("Host updated the game settings.")
+        
+        # Update room in database
+        update_room_in_db(room_id, room)
 
     emit_state_update(room_id)
 
@@ -423,13 +647,16 @@ def on_submit_vote(data):
     voted_for_id = data.get("votedForId")
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room or room["phase"] != "voting": return
         if voter_id in room["votes"]: return # Prevent re-submission
 
         room["votes"][voter_id] = voted_for_id
         voter_name = next((p["name"] for p in room["players"] if p["id"] == voter_id), "Someone")
         room["lobby_events"].append(f"{voter_name} has cast their vote.")
+        
+        # Update room in database
+        update_room_in_db(room_id, room)
 
     emit_state_update(room_id)
 
@@ -447,7 +674,7 @@ def handle_kick_player(data):
     print(f"KICK request: {by_player_id} is trying to kick {target_player_id} from {room_id}")
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room:
             emit("error_event", {"message": "Room not found."}, room=request.sid)
             return
@@ -466,6 +693,9 @@ def handle_kick_player(data):
 
         room["players"] = [p for p in room["players"] if p["id"] != target_player_id]
         room["lobby_events"].append(f"{player_name} was kicked from the game.")
+        
+        # Update room in database
+        update_room_in_db(room_id, room)
 
     # Alert the kicked player
     emit('kicked_from_room', {"message": "You have been removed from the game."}, to=target_socket_id)
@@ -488,7 +718,7 @@ def handle_ready_to_vote(data):
         return
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room:
             return
 
@@ -501,18 +731,21 @@ def handle_ready_to_vote(data):
             room['ready_to_vote'].append(player_id)
             player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
             room["lobby_events"].append(f"{player_name} is ready to vote.")
+            
+            # Update room in database
+            update_room_in_db(room_id, room)
 
     # Emit state update first
     emit_state_update(room_id)
     
     # Then check if we need to transition (do this after emit to avoid race conditions)
-    room = rooms.get(room_id)
+    room = get_room_from_db(room_id)
     if room and len(room.get('ready_to_vote', [])) == len(room['players']):
         transition_to_vote_selection(room_id)
 
 def transition_to_vote_selection(room_id):
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room:
             return
         
@@ -525,6 +758,9 @@ def transition_to_vote_selection(room_id):
         room["lobby_events"].append("Time to vote for the imposter!")
 
         room["liarVotes"] = {}
+        
+        # Update room in database
+        update_room_in_db(room_id, room)
 
     # Emit outside the lock to avoid deadlock
     emit_state_update(room_id)
@@ -534,12 +770,16 @@ def handle_voting_timer_expired(data):
     room_id = data['roomId']
     print(f"🟡 Event received: voting_timer_expired for room {room_id}")
 
-    if room_id in rooms:
+    if room_exists_in_db(room_id):
         print(f"✅ Timer expired in voting phase — transitioning room {room_id}")
-        rooms[room_id]['phase'] = 'vote_selection'
-        rooms[room_id]['voteSelectionStartTimestamp'] = time.time()
+        with lock:
+            room = get_room_from_db(room_id)
+            if room:
+                room['phase'] = 'vote_selection'
+                room['voteSelectionStartTimestamp'] = time.time()
+                update_room_in_db(room_id, room)
 
-    emit_state_update(room_id)
+        emit_state_update(room_id)
 
 @socketio.on('liar_vote')
 def handle_liar_vote(data):
@@ -551,7 +791,7 @@ def handle_liar_vote(data):
         return
 
     with lock:
-        room = rooms.get(room_id)
+        room = get_room_from_db(room_id)
         if not room or room['phase'] != 'vote_selection':
             return
 
@@ -564,7 +804,6 @@ def handle_liar_vote(data):
             if voter_id in voters:
                 voters.remove(voter_id)
 
-
         if target_id not in room['liarVotes']:
             room['liarVotes'][target_id] = []
 
@@ -573,6 +812,9 @@ def handle_liar_vote(data):
         voter_name = next((p["name"] for p in room["players"] if p["id"] == voter_id), "Someone")
         target_name = next((p["name"] for p in room["players"] if p["id"] == target_id), "Unknown")
         room["lobby_events"].append(f"{voter_name} voted for {target_name}.")
+        
+        # Update room in database
+        update_room_in_db(room_id, room)
 
     emit_state_update(room_id)
 
