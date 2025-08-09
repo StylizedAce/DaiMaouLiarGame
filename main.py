@@ -311,7 +311,9 @@ def get_room_state(room_id):
             state["mainQuestion"] = room["main_question"]
             state["ready_to_vote"] = room.get("ready_to_vote", [])
             state["liarVotes"] = room.get("liarVotes", {})
-            state["imposterId"] = room.get("imposter_id")
+            state["impostorIds"] = room.get("impostor_ids", [room.get("imposter_id")] if room.get("imposter_id") else [])
+            state["imposterId"] = room.get("imposter_id")  # Keep for backward compatibility
+
 
         elif room["phase"] == "results":
             state["results"] = room["results"]
@@ -564,19 +566,30 @@ def on_start_game(data):
         
         # --- Start Game Logic ---
         players = room["players"]
-        imposter = random.choice(players)
         q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []))
-        
-        if q_pair is None:
-            emit('error_event', {'message': 'Could not load questions. Please try again.'}, room=request.sid)
-            return
-        
-        room["imposter_id"] = imposter["id"]
+        room["main_question"] = q_pair[0]
+
+        # Determine impostor count based on game mode
+        game_mode = room.get("settings", {}).get("gameMode", "normal")
+        if game_mode == "mayhem":
+            impostor_count = get_mayhem_impostor_count(len(players))
+        else:
+            impostor_count = 1
+
+        # Select impostors
+        impostors = random.sample(players, impostor_count) if impostor_count > 0 else []
+        impostor_ids = [imp["id"] for imp in impostors]
+
+        # Store impostor info (update to handle multiple)
+        room["impostor_ids"] = impostor_ids  # New: list of impostor IDs
+        room["imposter_id"] = impostor_ids[0] if impostor_ids else None  # Keep for backward compatibility
+
+        # Assign roles and questions
         for p in players:
-            is_imposter = p["id"] == room["imposter_id"]
+            is_imposter = p["id"] in impostor_ids
             room["roles"][p["id"]] = "imposter" if is_imposter else "normal"
             room["questions"][p["id"]] = q_pair[1] if is_imposter else q_pair[0]
-        room["main_question"] = q_pair[0] # Store the main question
+
 
         room["answers"], room["votes"], room["results"] = {}, {}, {}
         room["phase"] = "question"
@@ -754,15 +767,17 @@ def transition_to_vote_selection(room_id):
             return
         
         room['phase'] = 'vote_selection'
-        room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
-        room["lobby_events"].append("Time to vote for the imposter!")
+    room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
+    room["lobby_events"].append("Time to vote for the imposter!")
+    room["liarVotes"] = {}
+    
+    # CLEAR the ready_to_vote list for the new phase
+    room['ready_to_vote'] = []
+    
+    # Update room in database
+    update_room_in_db(room_id, room)
 
-        room["liarVotes"] = {}
-        
-        # Update room in database
-        update_room_in_db(room_id, room)
-
-    # Emit outside the lock to avoid deadlock
+# Emit outside the lock to avoid deadlock
     emit_state_update(room_id)
     
 @socketio.on('voting_timer_expired')
@@ -795,18 +810,23 @@ def handle_liar_vote(data):
         if not room or room['phase'] != 'vote_selection':
             return
 
-        # Use liarVotes instead of results
         if 'liarVotes' not in room:
             room['liarVotes'] = {}
 
-        # Remove previous vote by this player (in case of vote switch)
-        for voters in room['liarVotes'].values():
-            if voter_id in voters:
-                voters.remove(voter_id)
+        # Get game mode to determine voting behavior
+        game_mode = room.get("settings", {}).get("gameMode", "normal")
+
+        if game_mode != "mayhem":
+            # Normal mode: Remove previous vote (only one vote allowed)
+            for voters in room['liarVotes'].values():
+                if voter_id in voters:
+                    voters.remove(voter_id)
+        # In mayhem mode: Allow multiple votes, don't remove previous ones
 
         if target_id not in room['liarVotes']:
             room['liarVotes'][target_id] = []
 
+        # Add the vote (even if duplicate in mayhem mode)
         room['liarVotes'][target_id].append(voter_id)
 
         voter_name = next((p["name"] for p in room["players"] if p["id"] == voter_id), "Someone")
@@ -818,8 +838,76 @@ def handle_liar_vote(data):
 
     emit_state_update(room_id)
 
+def get_mayhem_impostor_count(player_count):
+    """
+    Determines the number of impostors for Mayhem mode based on random chance.
+    Scales with player count for more chaos.
+    """
+    rand = random.random() * 100
+    
+    if player_count == 4:
+        # 4 players
+        if rand < 10:  # 10%
+            return 0
+        elif rand < 30:  # 20%
+            return 3  # 3 out of 4
+        elif rand < 90:  # 60%
+            return 2
+        else:  # 10%
+            return 1
+    
+    elif player_count <= 6:
+        # 5-6 players: more variety
+        if rand < 5:  # 5%
+            return 0
+        elif rand < 10:  # 5%
+            return player_count - 1  # Everyone except 1
+        elif rand < 25:  # 15%
+            return player_count - 2  # Everyone except 2
+        elif rand < 70:  # 45%
+            return player_count // 2  # Half the players
+        else:  # 30%
+            return min(3, player_count - 2)
+    
+    else:  # 7+ players
+        # Big games: maximum chaos potential
+        if rand < 3:  # 3%
+            return 0
+        elif rand < 8:  # 5%
+            return player_count - 1  # Everyone except 1 (extreme scenario!)
+        elif rand < 18:  # 10%
+            return player_count - 2  # Everyone except 2
+        elif rand < 40:  # 22%
+            return player_count // 2  # Half the players
+        elif rand < 70:  # 30%
+            return (player_count * 2) // 3  # Two-thirds are impostors
+        else:  # 30%
+            return player_count // 3  # One-third are impostors
+
+@socketio.on('remove_answer')
+def on_remove_answer(data):
+    room_id = data.get("roomId")
+    player_id = data.get("playerId")
+
+    with lock:
+        room = get_room_from_db(room_id)
+        if not room or room["phase"] != "question": 
+            return
+
+        # Remove the player's answer
+        if player_id in room["answers"]:
+            del room["answers"][player_id]
+            
+            player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
+            room["lobby_events"].append(f"{player_name} is editing their answer.")
+            
+            # Update room in database
+            update_room_in_db(room_id, room)
+
+    emit_state_update(room_id)
+
 if __name__ == "__main__":
-    DEVELOPMENT = True
+    DEVELOPMENT = False
     if not DEVELOPMENT:
         port = int(os.environ.get("PORT", 5000))
         socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
