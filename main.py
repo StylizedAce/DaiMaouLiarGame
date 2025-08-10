@@ -427,13 +427,6 @@ def handle_disconnect(reason=None):
                     new_host_name = active_players[0]["name"]
                     room["lobby_events"].append(f"{new_host_name} is the new host.")
 
-                # If game was in progress and now has too few active players, reset it
-                if len(active_players) < 2 and room["phase"] != "waiting":
-                    room["phase"] = "waiting"
-                    # Reset game-specific fields
-                    room["roles"], room["questions"], room["answers"], room["votes"], room["results"] = {}, {}, {}, {}, {}
-                    room["imposter_id"] = None
-                    room["lobby_events"].append("Not enough active players. Returning to lobby.")
 
                 # Update the room in database
                 update_room_in_db(room_id, room)
@@ -661,14 +654,6 @@ def on_leave_room(data):
             room["host_id"] = room["players"][0]["id"]
             new_host_name = room["players"][0]["name"]
             room["lobby_events"].append(f"{new_host_name} is the new host.")
-        
-        # If game was in progress and now has too few players, reset it
-        if len(room["players"]) < 2 and room["phase"] != "waiting":
-            room["phase"] = "waiting"
-            # Reset game-specific fields
-            room["roles"], room["questions"], room["answers"], room["votes"], room["results"] = {}, {}, {}, {}, {}
-            room["imposter_id"] = None
-            room["lobby_events"].append("Not enough players. Returning to lobby.")
     
         # Update room in database
         update_room_in_db(room_id, room)
