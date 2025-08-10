@@ -48,7 +48,32 @@ def init_database():
             used_question_indexes TEXT  -- JSON string
         )
     ''')
+
+    # Create questions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            normal_question TEXT NOT NULL,
+            imposter_question TEXT NOT NULL
+        )
+    ''')
+
+    # Check if questions table is empty before importing
+    cursor.execute('SELECT COUNT(*) FROM questions')
+    question_count = cursor.fetchone()[0]
     
+    if question_count == 0:
+        # import all the questions from the question_pairs.csv into the database
+        try:
+            questions_df = pd.read_csv('question_pairs.csv')
+            for _, row in questions_df.iterrows():
+                cursor.execute('''
+                    INSERT INTO questions (normal_question, imposter_question) VALUES (?, ?)
+                ''', (row['Normal_Question'], row['Imposter_Question']))
+            print(f"Imported {len(questions_df)} questions from CSV into database.")
+        except Exception as e:
+            print(f"Error importing questions from CSV: {e}")
+
     conn.commit()
     conn.close()
 
@@ -223,45 +248,51 @@ def room_exists_in_db(room_id):
 
 def get_question_pair(used_indexes=None):
     """
-    Returns a single random question pair (normal, imposter) and its index.
+    Returns a single random question pair (normal, imposter) from the database.
     Avoids previously used indexes for the current room session.
     
     Args:
         used_indexes (list): List of question indexes already used in this room session
         
     Returns:
-        tuple: ((normal_question, imposter_question), selected_index)
+        tuple: (normal_question, imposter_question) or None if error
     """
     if used_indexes is None:
         used_indexes = []
     
     try:
-        df = pd.read_csv('question_pairs.csv')
-        if df.empty:
-            raise ValueError("CSV file is empty.")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id, normal_question, imposter_question FROM questions')
+        questions = cursor.fetchall()
+        conn.close()
+        
+        if not questions:
+            print("DEBUG: No questions found in database.")
+            return None
         
         # Get available indexes (excluding used ones)
-        all_indexes = list(range(len(df)))
-        available_indexes = [i for i in all_indexes if i not in used_indexes]
+        all_indexes = [q['id'] for q in questions]
+        available_indexes = [idx for idx in all_indexes if idx not in used_indexes]
         
         if not available_indexes:
             print("WARNING: All questions have been used. Resetting question pool.")
             available_indexes = all_indexes  # Reset if all questions used
         
         # Pick random available index
-        selected_index = random.choice(available_indexes)
+        selected_id = random.choice(available_indexes)
         
         # Get the question pair
-        row = df.iloc[selected_index]
-        question_pair = (row['Normal_Question'], row['Imposter_Question'])
+        selected_question = next(q for q in questions if q['id'] == selected_id)
+        question_pair = (selected_question['normal_question'], selected_question['imposter_question'])
         
-        print(f"DEBUG: Selected question index {selected_index}: {question_pair[0]}")
+        print(f"DEBUG: Selected question ID {selected_id}: {question_pair[0]}")
         return question_pair
         
     except Exception as e:
-        print(f"DEBUG: Could not load question_pairs.csv ({e}). Using default pairs.")
-        # Can't emit error here as there's no request context
-        return None  # Return None to indicate failure
+        print(f"DEBUG: Could not load questions from database ({e}).")
+        return None
 
 
 def get_player_info_by_id(players_list, player_id):
@@ -793,8 +824,11 @@ def on_submit_vote(data):
     
     emit_state_update(room_id, room)
 
-@app.route('/', methods=['GET'])
+@app.route('/hello', methods=['GET'])
 def index():
+    # updateing pandas with new data,
+    # saving to database
+    #database saved.
     return "Welcome to the Dai Maou Liar Game!"
 
 
