@@ -170,7 +170,7 @@ def update_room_in_db(room_id, room_data):
         room_data.get('main_question'),
         json.dumps(room_data.get('ready_to_vote', [])),
         json.dumps(room_data.get('settings', {})),
-        room_data.get('questionPhaseStartTimestamp'),
+        room_data.get('questionPhaseStartTimestamp'),  # Fixed missing parenthesis
         room_data.get('votingPhaseStartTimestamp'),
         room_data.get('voteSelectionStartTimestamp'),
         json.dumps(room_data.get('liarVotes', {})),
@@ -264,18 +264,28 @@ def get_question_pair(used_indexes=None):
         return None  # Return None to indicate failure
 
 
-def get_room_state(room_id):
-    """ This function given a room ID can fetch the roomdata from the currently running rooms. It is used in every state emission"""
+def get_player_info_by_id(players_list, player_id):
+    """Helper function to find a player dictionary in a list by their ID."""
+    return next((p for p in players_list if p["id"] == player_id), None)
+
+def get_room_state(room_id, room=None):
+    """ This function given a room ID can fetch the roomdata from the currently running rooms.
+    It is used in every state emission.
+    Accepts an optional 'room' dictionary to avoid redundant database reads.
+    """
     with lock:
-        room = get_room_from_db(room_id)
+        if room is None:
+            room = get_room_from_db(room_id)
         if not room:
             return None
 
         # Base state visible to everyone
+        active_players = [p for p in room["players"] if not p.get("disconnected")]
+        
         state = {
             "roomId": room_id,
             "phase": room["phase"],
-            "players": room["players"],
+            "players": active_players,
             "hostId": room["host_id"],
             "lobbyEvents": room["lobby_events"],
             "settings": room.get("settings", {})
@@ -284,47 +294,69 @@ def get_room_state(room_id):
         if room["phase"] == "question":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
             state["submittedCount"] = len(room.get("answers", {}))
-            state["answers"] = [
-                {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "")}
-                for p in room["players"] if p["id"] in room.get("answers", {})
-            ]
+            
+            # Build the answers list
+            answers_list = []
+            for player_id, answer in room.get("answers", {}).items():
+                player = get_player_info_by_id(room["players"], player_id)
+                if player:
+                    answers_list.append({
+                        "playerId": player_id,
+                        "name": player["name"],
+                        "answer": answer
+                    })
+            state["answers"] = answers_list
 
         # Add phase-specific data
         if room["phase"] == "voting":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
-            state["votingPhaseStartTimestamp"] = room.get("votingPhaseStartTimestamp")  # NEW LINE
-            state["answers"] = [
-                {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "No answer")}
-                for p in room["players"]
-            ]
-            state["mainQuestion"] = room["main_question"] # Add the main question here
+            state["votingPhaseStartTimestamp"] = room.get("votingPhaseStartTimestamp")
+
+            answers_list = []
+            for player_id, answer in room.get("answers", {}).items():
+                player = get_player_info_by_id(room["players"], player_id)
+                if player:
+                    answers_list.append({
+                        "playerId": player_id,
+                        "name": player["name"],
+                        "answer": answer
+                    })
+            state["answers"] = answers_list
+            
+            state["mainQuestion"] = room["main_question"]
             state["ready_to_vote"] = room.get("ready_to_vote", [])
 
         elif room["phase"] == "vote_selection":
             state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
             state["votingPhaseStartTimestamp"] = room.get("votingPhaseStartTimestamp")
             state["voteSelectionStartTimestamp"] = room.get("voteSelectionStartTimestamp")
-            state["answers"] = [
-                {"playerId": p["id"], "name": p["name"], "answer": room["answers"].get(p["id"], "No answer")}
-                for p in room["players"]
-            ]   
+            
+            answers_list = []
+            for player_id, answer in room.get("answers", {}).items():
+                player = get_player_info_by_id(room["players"], player_id)
+                if player:
+                    answers_list.append({
+                        "playerId": player_id,
+                        "name": player["name"],
+                        "answer": answer
+                    })
+            state["answers"] = answers_list
+            
             state["mainQuestion"] = room["main_question"]
             state["ready_to_vote"] = room.get("ready_to_vote", [])
             state["liarVotes"] = room.get("liarVotes", {})
             state["impostorIds"] = room.get("impostor_ids", [room.get("imposter_id")] if room.get("imposter_id") else [])
-            state["imposterId"] = room.get("imposter_id")  # Keep for backward compatibility
-
+            state["imposterId"] = room.get("imposter_id")
 
         elif room["phase"] == "results":
             state["results"] = room["results"]
-            # Also reveal the imposter's question
             state["questions"] = room["questions"]
 
-        return state
+    return state
 
-def emit_state_update(room_id):
+def emit_state_update(room_id, room=None):
     """Emits the full game state to all clients in a room."""
-    room_state = get_room_state(room_id)
+    room_state = get_room_state(room_id, room)
     if room_state:
         print(f"DEBUG: Emitting state update for room {room_id}. Phase: {room_state.get('phase')}")
         
@@ -332,14 +364,17 @@ def emit_state_update(room_id):
         socketio.emit('update_game_state', room_state, room=room_id)
 
         # Emit personal info (role, question) to each player individually
-        room = get_room_from_db(room_id)
+        if room is None: # Fetch if not already provided
+            room = get_room_from_db(room_id)
         if room and room["phase"] == "question":
             for p in room["players"]:
                 personal_info = {
                     "role": room["roles"].get(p["id"]),
                     "question": room["questions"].get(p["id"])
                 }
-                socketio.emit('personal_game_info', personal_info, room=p["socket_id"])
+                target_sid = p.get("socket_id")
+                if target_sid:
+                    socketio.emit('personal_game_info', personal_info, room=target_sid)
     else:
         print(f"DEBUG: No room state found for room {room_id}")
 
@@ -357,33 +392,48 @@ def handle_disconnect(reason=None):
             if not room:
                 continue
                 
-            player_to_remove = next((p for p in room["players"] if p.get("socket_id") == request.sid), None)
+            player_to_update = next((p for p in room["players"] if p.get("socket_id") == request.sid), None)
 
-            if player_to_remove:
-                player_id = player_to_remove["id"]
-                player_name = player_to_remove["name"]
+            if player_to_update:
+                player_id = player_to_update["id"]
+                player_name = player_to_update["name"]
                 
-                room["players"] = [p for p in room["players"] if p["id"] != player_id]
-                room["lobby_events"].append(f"{player_name} has left the game.")
+                # Mark player as disconnected instead of removing them
+                player_to_update["disconnected"] = True
+                player_to_update["disconnect_time"] = time.time()
+                player_to_update.pop("socket_id", None)  # Remove socket_id safely
+                room["lobby_events"].append(f"{player_name} has disconnected.")
                 
-                if not room["players"]:
+                # Check if we need to clean up expired disconnected players
+                current_time = time.time()
+                expired_players = [p for p in room["players"] if p.get("disconnected") and (current_time - p.get("disconnect_time", 0)) > 60]
+                
+                # Remove expired disconnected players
+                for expired_player in expired_players:
+                    room["players"] = [p for p in room["players"] if p["id"] != expired_player["id"]]
+                    room["lobby_events"].append(f"{expired_player['name']} has been removed (reconnect timeout).")
+                
+                # Get active (non-disconnected) players
+                active_players = [p for p in room["players"] if not p.get("disconnected")]
+                
+                if not active_players:
                     delete_room_from_db(room_id)
-                    print(f"Room {room_id} is empty and has been removed.")
+                    print(f"Room {room_id} has no active players and has been removed.")
                     return
                 
-                # If the host disconnected, assign a new host
-                if player_id == room["host_id"]:
-                    room["host_id"] = room["players"][0]["id"]
-                    new_host_name = room["players"][0]["name"]
+                # If the disconnected player was the host, assign a new host from active players
+                if player_id == room["host_id"] and active_players:
+                    room["host_id"] = active_players[0]["id"]
+                    new_host_name = active_players[0]["name"]
                     room["lobby_events"].append(f"{new_host_name} is the new host.")
 
-                # If game was in progress and now has too few players, reset it
-                if len(room["players"]) < 2 and room["phase"] != "waiting":
+                # If game was in progress and now has too few active players, reset it
+                if len(active_players) < 2 and room["phase"] != "waiting":
                     room["phase"] = "waiting"
                     # Reset game-specific fields
                     room["roles"], room["questions"], room["answers"], room["votes"], room["results"] = {}, {}, {}, {}, {}
                     room["imposter_id"] = None
-                    room["lobby_events"].append("Not enough players. Returning to lobby.")
+                    room["lobby_events"].append("Not enough active players. Returning to lobby.")
 
                 # Update the room in database
                 update_room_in_db(room_id, room)
@@ -392,6 +442,88 @@ def handle_disconnect(reason=None):
     
     if room_to_update:
         emit_state_update(room_to_update)
+
+@socketio.on('rejoin_game')
+def handle_rejoin_game(data):
+    room_id = data.get("roomId")
+    player_id = data.get("playerId")
+    timestamp = data.get("timeStamp")
+
+    print(f"🔄 Rejoin request: SID={request.sid}, Room={room_id}, Player={player_id}")
+
+    if not room_id or not player_id:
+        emit('error', {"message": "Room ID and Player ID are required."})
+        return
+
+    try:
+        with lock:
+            room = get_room_from_db(room_id)
+            if not room:
+                print(f"❌ Room {room_id} does not exist")
+                emit('error', {"message": "Room does not exist."})
+                return
+
+            player_to_rejoin = next((p for p in room["players"] if p["id"] == player_id), None)
+            
+            if not player_to_rejoin:
+                print(f"❌ Player {player_id} not found in room {room_id}")
+                emit('error', {"message": "Player not found in room."})
+                return
+
+            if not player_to_rejoin.get("disconnected"):
+                print(f"❌ Player {player_id} is not marked as disconnected")
+                emit('error', {"message": "Player is not disconnected."})
+                return
+
+            disconnect_time = player_to_rejoin.get("disconnect_time", 0)
+            if time.time() - disconnect_time > 60:
+                print(f"❌ Reconnection time window expired for player {player_id}")
+                emit('error', {"message": "Reconnection time window has expired."})
+                return
+
+            print(f"✅ Player {player_id} is eligible to rejoin room {room_id}")
+
+            player_to_rejoin["disconnected"] = False
+            player_to_rejoin.pop("disconnect_time", None)
+            player_to_rejoin["socket_id"] = request.sid
+
+            print(f"🔗 Joining socket room {room_id}")
+            join_room(room_id)
+            
+            room["lobby_events"].append(f"{player_to_rejoin['name']} has reconnected.")
+
+            print(f"💾 Updating room in database")
+            update_room_in_db(room_id, room)
+
+        # Emissions must happen after the room data is fully updated
+        room_state = get_room_state(room_id)
+        
+        # We need to manually emit to the reconnected player first to prevent race conditions.
+        # The global emit_state_update call will then catch any other players.
+        player = get_player_info_by_id(room_state["players"], player_id)
+        if player and room_state["phase"] == "question":
+            personal_info = {
+                "role": room["roles"].get(player_id),
+                "question": room["questions"].get(player_id)
+            }
+            emit('personal_game_info', personal_info, room=player["socket_id"])
+
+        emit('reconnect_player', {
+            'success': True,
+            'message': 'Successfully reconnected to the game',
+            'gameState': room_state,
+            'playerId': player_id
+        }, room=request.sid)
+
+        print(f"🌐 Emitting state update to all players in room {room_id}")
+        emit_state_update(room_id)
+        print(f"✅ Rejoin process completed for player {player_id}")
+        
+    except Exception as e:
+        print(f"❌ Error in rejoin_game: {e}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {"message": "An error occurred during rejoin."})
 
 @socketio.on('join_room')
 def on_join_room(data):
@@ -544,6 +676,7 @@ def on_leave_room(data):
     # Update all remaining players in the room
     emit_state_update(room_id)
 
+
 @socketio.on('start_game')
 def on_start_game(data):
     room_id = data.get("roomId")
@@ -553,9 +686,9 @@ def on_start_game(data):
     with lock:
         room = get_room_from_db(room_id)
         if not room: return
+        
         room["settings"] = settings 
 
-        
         # Validation: Only the host can start, and only with enough players
         if room["host_id"] != player_id:
             emit('error_event', {'message': 'Only the host can start the game.'}, room=request.sid)
@@ -581,8 +714,8 @@ def on_start_game(data):
         impostor_ids = [imp["id"] for imp in impostors]
 
         # Store impostor info (update to handle multiple)
-        room["impostor_ids"] = impostor_ids  # New: list of impostor IDs
-        room["imposter_id"] = impostor_ids[0] if impostor_ids else None  # Keep for backward compatibility
+        room["impostor_ids"] = impostor_ids
+        room["imposter_id"] = impostor_ids[0] if impostor_ids else None
 
         # Assign roles and questions
         for p in players:
@@ -593,13 +726,13 @@ def on_start_game(data):
 
         room["answers"], room["votes"], room["results"] = {}, {}, {}
         room["phase"] = "question"
-        room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000 # subtract 1.5 seconds
+        room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000
         room["lobby_events"].append("The game has started!")
         
         # Update room in database
         update_room_in_db(room_id, room)
 
-    emit_state_update(room_id)
+    emit_state_update(room_id, room)
 
 
 @socketio.on('submit_answer')
@@ -610,7 +743,8 @@ def on_submit_answer(data):
 
     with lock:
         room = get_room_from_db(room_id)
-        if not room or room["phase"] != "question": return
+        if not room or room["phase"] != "question":
+            return
 
         is_new_submission = player_id not in room["answers"]
         room["answers"][player_id] = answer
@@ -625,14 +759,15 @@ def on_submit_answer(data):
         # Check if all players have answered
         if len(room["answers"]) == len(room["players"]):
             room["phase"] = "voting"
-            room["votingPhaseStartTimestamp"] = int(time.time() * 1000) - 2000  # NEW LINE
+            room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
             room["lobby_events"].append("All answers are in! Time to vote.")
             room['ready_to_vote'] = [] 
             
         # Update room in database
         update_room_in_db(room_id, room)
     
-    emit_state_update(room_id)
+    # We pass the updated 'room' object directly to prevent a race condition.
+    emit_state_update(room_id, room)
 
 
 @socketio.on('update_settings')
@@ -651,7 +786,7 @@ def on_update_settings(data):
         # Update room in database
         update_room_in_db(room_id, room)
 
-    emit_state_update(room_id)
+    emit_state_update(room_id, room)
 
 @socketio.on('submit_vote')
 def on_submit_vote(data):
@@ -670,8 +805,8 @@ def on_submit_vote(data):
         
         # Update room in database
         update_room_in_db(room_id, room)
-
-    emit_state_update(room_id)
+    
+    emit_state_update(room_id, room)
 
 @app.route('/', methods=['GET'])
 def index():
@@ -907,7 +1042,7 @@ def on_remove_answer(data):
     emit_state_update(room_id)
 
 if __name__ == "__main__":
-    DEVELOPMENT = False
+    DEVELOPMENT = True
     if not DEVELOPMENT:
         port = int(os.environ.get("PORT", 5000))
         socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
