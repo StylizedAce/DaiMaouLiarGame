@@ -5,6 +5,7 @@ Socket event handlers for game-related operations.
 import time
 import random
 import uuid
+import threading
 from flask import request
 from flask_socketio import emit
 from utils.helpers import get_question_pair
@@ -71,6 +72,11 @@ class GameHandler:
                 room["questions"][p["id"]] = q_pair[1] if is_imposter else q_pair[0]
 
             room["answers"], room["votes"], room["results"] = {}, {}, {}
+            
+            # Emit game_starting event to trigger animation for all players FIRST
+            self.socketio.emit('game_starting', room=room_id)
+            
+            # Immediately proceed with normal game transition
             room["phase"] = "question"
             room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000
             room["lobby_events"].append("The game has started!")
