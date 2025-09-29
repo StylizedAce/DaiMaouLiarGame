@@ -219,7 +219,7 @@ class GameManager:
             
             print(f"ROUND {current_round} COMPLETE!")
             
-            if current_round >= total_rounds:
+            if current_round > total_rounds:
                 # Game is over, go to final results
                 print("RESULTS PAGE TIME")
                 room['phase'] = 'results'
