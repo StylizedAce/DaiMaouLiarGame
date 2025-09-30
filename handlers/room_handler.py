@@ -83,8 +83,17 @@ class RoomHandler:
                 emit('error_event', {'message': 'Game is already in progress.'}, room=request.sid)
                 return
                 
-            max_players = room.get("settings", {}).get("playerCount", 6)  # default
-            if len(room["players"]) >= max_players:
+            from utils.helpers import get_active_players
+
+            max_players = room.get("settings", {}).get("playerCount", 6)
+            active_players = get_active_players(room["players"])
+            current_player_count = len(active_players)
+
+            print(f"🔍 JOIN CHECK - Room {room_id}: {current_player_count} active players (out of {len(room['players'])} total), max {max_players}")
+            print(f"   Active players: {[p['name'] for p in active_players]}")
+
+            if current_player_count >= max_players:
+                print(f"❌ Room full! {current_player_count} >= {max_players}")
                 emit('error_event', {'message': 'The room you were trying to reach seems full.'}, room=request.sid)
                 return
 

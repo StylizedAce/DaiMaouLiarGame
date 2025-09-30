@@ -52,14 +52,30 @@ class ConnectionHandler:
                         room["players"] = [p for p in room["players"] if p["id"] != expired_player["id"]]
                         room["lobby_events"].append(f"{expired_player['name']} has been removed (reconnect timeout).")
                     
-                    # Get active (non-disconnected) players
+                   # Get active (non-disconnected) players
                     active_players = get_active_players(room["players"])
+
+                    # Check if only 1 active player remains AND game has started
+                    if len(active_players) == 1 and room["phase"] != "waiting":
+                        # Kick the last player with a message
+                        last_player = active_players[0]
+                        last_player_sid = last_player.get("socket_id")
+                        if last_player_sid:
+                            self.socketio.emit('solo_player_kick', {
+                                'message': 'You were the only player left in the game.'
+                            }, room=last_player_sid)
+                        
+                        # Delete the room
+                        self.db_manager.delete_room(room_id)
+                        print(f"Room {room_id} had only 1 active player and was deleted.")
+                        return
                     
+                    # Check if no active players
                     if not active_players:
                         self.db_manager.delete_room(room_id)
                         print(f"Room {room_id} has no active players and has been removed.")
                         return
-                    
+
                     # If the disconnected player was the host, assign a new host from active players
                     if player_id == room["host_id"] and active_players:
                         room["host_id"] = active_players[0]["id"]
