@@ -194,9 +194,6 @@ class GameManager:
             room["lobby_events"].append("Time to vote for the imposter!")
             room["liarVotes"] = {}
             
-            # CLEAR the ready_to_vote list for the new phase
-            room['ready_to_vote'] = []
-            
             # Update room in database
             self.db_manager.update_room(room_id, room)
 
@@ -206,20 +203,29 @@ class GameManager:
     def handle_round_transition(self, room_id):
         """Handle the transition between rounds or to final results."""
         from utils.helpers import get_question_pair
-        import time
-        import random
         
         with self.lock:
             room = self.db_manager.get_room(room_id)
             if not room:
                 return
             
+            # Prevent duplicate transitions - check if we're already in question phase
+            if room.get('phase') == 'question':
+                print(f"⚠️ Round transition already processed, ignoring duplicate call")
+                return
+            
+            # Only allow transition from vote_selection phase
+            if room.get('phase') != 'vote_selection':
+                print(f"⚠️ Invalid phase for round transition: {room.get('phase')}")
+                return
+            
             current_round = room.get('current_round', 1)
             total_rounds = room.get('total_rounds', 5)
             
+            print(f"🔄 ROUND TRANSITION - current_round: {current_round}, total_rounds: {total_rounds}")
             print(f"ROUND {current_round} COMPLETE!")
-            
-            if current_round > total_rounds:
+
+            if current_round >= total_rounds:
                 # Game is over, go to final results
                 print("RESULTS PAGE TIME")
                 room['phase'] = 'results'

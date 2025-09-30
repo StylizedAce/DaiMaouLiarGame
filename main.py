@@ -108,7 +108,7 @@ def on_round_transition(data):
 # HTTP route
 @app.route('/', methods=['GET'])
 def index():
-    return "Welcome to the Dai Maou Liar Game!"
+    return "Welcome to the Kellak Lies!"
 
 
 # Application entry point
