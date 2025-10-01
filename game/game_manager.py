@@ -214,12 +214,10 @@ class GameManager:
             if not room:
                 return
             
-            # Prevent duplicate transitions
             if room.get('phase') == 'question':
                 print(f"⚠️ Round transition already processed, ignoring duplicate call")
                 return
             
-            # Only allow transition from vote_selection phase
             if room.get('phase') != 'vote_selection':
                 print(f"⚠️ Invalid phase for round transition: {room.get('phase')}")
                 return
@@ -230,13 +228,31 @@ class GameManager:
             print(f"🔄 ROUND TRANSITION - current_round: {current_round}, total_rounds: {total_rounds}")
             print(f"ROUND {current_round} COMPLETE!")
 
+            # Calculate scores
+            round_scores = self.calculate_round_scores(room)
+            
+            # Initialize score tracking if not exists
+            if "player_scores" not in room:
+                room["player_scores"] = {p["id"]: 0 for p in room["players"]}
+            
+            # Add round scores to total scores
+            for player_id, points in round_scores.items():
+                if player_id in room["player_scores"]:
+                    room["player_scores"][player_id] += points
+                else:
+                    room["player_scores"][player_id] = points
+            
+            print(f"   Round {current_round} scores: {round_scores}")
+            print(f"   Total scores: {room['player_scores']}")
+
             if current_round >= total_rounds:
                 # Game is over
                 print("RESULTS PAGE TIME")
                 room['phase'] = 'results'
                 room['results'] = {
                     'finalRound': current_round,
-                    'gameComplete': True
+                    'gameComplete': True,
+                    'playerScores': room["player_scores"]  # ✅ ADD THIS
                 }
             else:
                 # Start next round
@@ -304,3 +320,88 @@ class GameManager:
             self.db_manager.update_room(room_id, room)
 
         self.emit_state_update(room_id)
+
+    def calculate_round_scores(self, room):
+        """Calculate scores for the round based on voting results."""
+        game_mode = room.get("settings", {}).get("gameMode", "normal")
+        impostor_ids = room.get("impostor_ids", [])
+        liar_votes = room.get("liarVotes", {})
+        players = room["players"]
+        
+        from utils.helpers import get_active_players
+        active_players = get_active_players(players)
+        active_player_ids = [p["id"] for p in active_players]
+        
+        scores = {p["id"]: 0 for p in active_players}
+        
+        # Special case: Zero impostors
+        if len(impostor_ids) == 0:
+            voters = set()
+            for target_id, voter_list in liar_votes.items():
+                voters.update(voter_list)
+            
+            for player_id in active_player_ids:
+                if player_id not in voters:
+                    scores[player_id] += 2
+                else:
+                    # ✅ Filter out self-votes
+                    wrong_votes = sum(1 for target_id, voters_list in liar_votes.items() 
+                                    if player_id in voters_list and target_id != player_id)
+                    scores[player_id] -= wrong_votes
+            
+            return scores
+        
+        # Normal case: Calculate votes per impostor
+        total_players = len(active_player_ids)
+        
+        for impostor_id in impostor_ids:
+            # ✅ Filter out self-votes when counting
+            valid_votes = [v for v in liar_votes.get(impostor_id, []) if v != impostor_id]
+            votes_received = len(valid_votes)
+            vote_percentage = (votes_received / total_players * 100) if total_players > 0 else 0
+            
+            if votes_received == 0:
+                scores[impostor_id] += 2
+            elif vote_percentage <= 50:
+                scores[impostor_id] += 1
+        
+        # Award points to voters
+        if game_mode == "mayhem":
+            for player_id in active_player_ids:
+                if player_id in impostor_ids:
+                    continue
+                
+                correct_votes = 0
+                wrong_votes = 0
+                
+                for target_id, voter_list in liar_votes.items():
+                    # ✅ Skip self-votes
+                    if player_id in voter_list and target_id != player_id:
+                        if target_id in impostor_ids:
+                            correct_votes += 1
+                        else:
+                            wrong_votes += 1
+                
+                scores[player_id] += correct_votes - wrong_votes
+        else:
+            # Normal mode
+            for player_id in active_player_ids:
+                if player_id in impostor_ids:
+                    continue
+                
+                voted_correctly = False
+                for impostor_id in impostor_ids:
+                    # ✅ Check they voted for impostor AND it's not themselves
+                    if player_id in liar_votes.get(impostor_id, []) and player_id != impostor_id:
+                        voted_correctly = True
+                        break
+                
+                if voted_correctly:
+                    scores[player_id] += 1
+        
+        return scores   
+
+    def get_player_name(self, players, player_id):
+        """Helper to get player name by ID."""
+        player = next((p for p in players if p["id"] == player_id), None)
+        return player["name"] if player else "Unknown"

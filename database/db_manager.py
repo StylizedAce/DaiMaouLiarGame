@@ -31,6 +31,7 @@ class DatabaseManager:
                 host_id TEXT NOT NULL,
                 phase TEXT NOT NULL DEFAULT 'waiting',
                 imposter_id TEXT,
+                impostor_ids TEXT,       
                 roles TEXT,  -- JSON string
                 questions TEXT,  -- JSON string
                 answers TEXT,  -- JSON string
@@ -46,7 +47,9 @@ class DatabaseManager:
                 liar_votes TEXT,  -- JSON string
                 used_question_indexes TEXT,  -- JSON string
                 current_round INTEGER DEFAULT 1,
-                total_rounds INTEGER DEFAULT 5
+                total_rounds INTEGER DEFAULT 5,
+                player_scores TEXT,
+                round_history TEXT
             )
         ''')
         
@@ -72,18 +75,19 @@ class DatabaseManager:
         
         cursor.execute('''
             INSERT INTO rooms (
-                room_id, players, host_id, phase, imposter_id, roles, questions,
+                room_id, players, host_id, phase, imposter_id, impostor_ids, roles, questions,
                 answers, votes, results, lobby_events, main_question, ready_to_vote,
                 settings, question_phase_start_timestamp, voting_phase_start_timestamp,
                 vote_selection_start_timestamp, liar_votes, used_question_indexes,
-                current_round, total_rounds
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                current_round, total_rounds, player_scores, round_history
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             room_id,
             json.dumps(room_data.get('players', [])),
             room_data.get('host_id', ''),
             room_data.get('phase', 'waiting'),
             room_data.get('imposter_id'),
+            json.dumps(room_data.get('impostor_ids', [])),
             json.dumps(room_data.get('roles', {})),
             json.dumps(room_data.get('questions', {})),
             json.dumps(room_data.get('answers', {})),
@@ -99,7 +103,9 @@ class DatabaseManager:
             json.dumps(room_data.get('liarVotes', {})),
             json.dumps(room_data.get('used_question_indexes', [])),
             room_data.get('current_round', 1),
-            room_data.get('total_rounds', 5)
+            room_data.get('total_rounds', 5),
+            json.dumps(room_data.get('player_scores', {})),
+            json.dumps(room_data.get('round_history', []))
         ))
         
         conn.commit()
@@ -117,12 +123,12 @@ class DatabaseManager:
         if not row:
             return None
         
-        # Convert back to dictionary format
         room_data = {
             'players': json.loads(row['players']),
             'host_id': row['host_id'],
             'phase': row['phase'],
             'imposter_id': row['imposter_id'],
+            'impostor_ids': json.loads(row['impostor_ids']) if row['impostor_ids'] else [],  # ✅ ADD
             'roles': json.loads(row['roles']),
             'questions': json.loads(row['questions']),
             'answers': json.loads(row['answers']),
@@ -138,7 +144,9 @@ class DatabaseManager:
             'liarVotes': json.loads(row['liar_votes']),
             'used_question_indexes': json.loads(row['used_question_indexes']),
             'current_round': row['current_round'],
-            'total_rounds': row['total_rounds']
+            'total_rounds': row['total_rounds'],
+            'player_scores': json.loads(row['player_scores']) if row['player_scores'] else {},  # ✅ ADD
+            'round_history': json.loads(row['round_history']) if row['round_history'] else []  # ✅ ADD
         }
         
         return room_data
@@ -150,18 +158,19 @@ class DatabaseManager:
         
         cursor.execute('''
             UPDATE rooms SET
-                players = ?, host_id = ?, phase = ?, imposter_id = ?, roles = ?,
+                players = ?, host_id = ?, phase = ?, imposter_id = ?, impostor_ids = ?, roles = ?,
                 questions = ?, answers = ?, votes = ?, results = ?, lobby_events = ?,
                 main_question = ?, ready_to_vote = ?, settings = ?,
                 question_phase_start_timestamp = ?, voting_phase_start_timestamp = ?,
                 vote_selection_start_timestamp = ?, liar_votes = ?, used_question_indexes = ?,
-                current_round = ?, total_rounds = ?
+                current_round = ?, total_rounds = ?, player_scores = ?, round_history = ?
             WHERE room_id = ?
         ''', (
             json.dumps(room_data.get('players', [])),
             room_data.get('host_id', ''),
             room_data.get('phase', 'waiting'),
             room_data.get('imposter_id'),
+            json.dumps(room_data.get('impostor_ids', [])),  # Add this
             json.dumps(room_data.get('roles', {})),
             json.dumps(room_data.get('questions', {})),
             json.dumps(room_data.get('answers', {})),
@@ -178,6 +187,8 @@ class DatabaseManager:
             json.dumps(room_data.get('used_question_indexes', [])),
             room_data.get('current_round', 1),
             room_data.get('total_rounds', 5),
+            json.dumps(room_data.get('player_scores', {})),  # Add this
+            json.dumps(room_data.get('round_history', [])),  # Add this
             room_id
         ))
         
