@@ -199,11 +199,10 @@ class GameManager:
             room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
             room["lobby_events"].append("Time to vote for the imposter!")
             room["liarVotes"] = {}
+            room['ready_to_vote'] = []  # ✅ CLEAR the ready list for vote_selection phase
             
-            # Update room in database
             self.db_manager.update_room(room_id, room)
 
-        # Emit outside the lock to avoid deadlock
         self.emit_state_update(room_id)
     
     def handle_round_transition(self, room_id):

@@ -206,13 +206,11 @@ class GameHandler:
                 player_name = next((p["name"] for p in room["players"] if p["id"] == player_id), "Someone")
                 room["lobby_events"].append(f"{player_name} is ready to vote.")
                 
-                # Update room in database
                 self.db_manager.update_room(room_id, room)
 
-        # Emit state update first
         self.game_manager.emit_state_update(room_id)
         
-        # Then check if we need to transition - USE ACTIVE PLAYERS
+        # Check if we need to transition - USE ACTIVE PLAYERS
         from utils.helpers import get_active_players
         room = self.db_manager.get_room(room_id)
         if room:
@@ -222,7 +220,8 @@ class GameHandler:
             
             print(f"🔍 READY CHECK - Ready: {ready_count}, Active: {active_count}, Active players: {[p['name'] for p in active_players]}")
             
-            if ready_count == active_count:
+            # Only transition from voting phase
+            if room['phase'] == 'voting' and ready_count == active_count:
                 self.game_manager.transition_to_vote_selection(room_id)
     
     def handle_liar_vote(self, data):
