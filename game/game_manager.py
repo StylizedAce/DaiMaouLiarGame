@@ -202,14 +202,14 @@ class GameManager:
     
     def handle_round_transition(self, room_id):
         """Handle the transition between rounds or to final results."""
-        from utils.helpers import get_question_pair
+        from utils.helpers import get_question_pair, get_active_players
         
         with self.lock:
             room = self.db_manager.get_room(room_id)
             if not room:
                 return
             
-            # Prevent duplicate transitions - check if we're already in question phase
+            # Prevent duplicate transitions
             if room.get('phase') == 'question':
                 print(f"⚠️ Round transition already processed, ignoring duplicate call")
                 return
@@ -226,10 +226,9 @@ class GameManager:
             print(f"ROUND {current_round} COMPLETE!")
 
             if current_round >= total_rounds:
-                # Game is over, go to final results
+                # Game is over
                 print("RESULTS PAGE TIME")
                 room['phase'] = 'results'
-                # Set some basic results data
                 room['results'] = {
                     'finalRound': current_round,
                     'gameComplete': True
@@ -240,31 +239,53 @@ class GameManager:
                 room['current_round'] = next_round
                 print(f"ROUND {next_round}")
                 
-                # Reset game state for new round
-                players = room["players"]
+                # 🆕 Use ACTIVE players only (exclude disconnected)
+                active_players = get_active_players(room["players"])
+                
+                print(f"   Active players for round {next_round}: {[p['name'] for p in active_players]}")
+                
+                # Check if enough players remain
+                if len(active_players) < 2:
+                    print("   Not enough active players, ending game")
+                    room['phase'] = 'results'
+                    room['results'] = {
+                        'finalRound': current_round,
+                        'gameComplete': True,
+                        'reason': 'Not enough players'
+                    }
+                    self.db_manager.update_room(room_id, room)
+                    self.emit_state_update(room_id)
+                    return
+                
                 q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []))
                 room["main_question"] = q_pair[0]
 
                 # Determine impostor count based on game mode
                 game_mode = room.get("settings", {}).get("gameMode", "normal")
                 if game_mode == "mayhem":
-                    impostor_count = self.get_mayhem_impostor_count(len(players))
+                    impostor_count = self.get_mayhem_impostor_count(len(active_players))
                 else:
                     impostor_count = 1
 
-                # Select impostors
-                impostors = random.sample(players, impostor_count) if impostor_count > 0 else []
+                # 🆕 Select impostors from ACTIVE players only
+                impostors = random.sample(active_players, impostor_count) if impostor_count > 0 else []
                 impostor_ids = [imp["id"] for imp in impostors]
 
-                # Store impostor info (update to handle multiple)
+                print(f"   Selected impostors: {[imp['name'] for imp in impostors]}")
+
+                # Store impostor info
                 room["impostor_ids"] = impostor_ids
                 room["imposter_id"] = impostor_ids[0] if impostor_ids else None
 
-                # Assign roles and questions
-                for p in players:
+                # 🆕 Assign roles and questions to ALL players (including disconnected)
+                # Disconnected players keep their role/question if they rejoin
+                for p in room["players"]:  # Iterate all players
                     is_imposter = p["id"] in impostor_ids
                     room["roles"][p["id"]] = "imposter" if is_imposter else "normal"
                     room["questions"][p["id"]] = q_pair[1] if is_imposter else q_pair[0]
+                    
+                    status = "DISCONNECTED" if p.get("disconnected") else "active"
+                    print(f"   {p['name']} ({status}): {room['roles'][p['id']]} - Q: {room['questions'][p['id']][:50]}...")
 
                 # Clear previous round data
                 room["answers"], room["votes"] = {}, {}

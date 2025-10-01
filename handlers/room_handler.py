@@ -95,12 +95,14 @@ class RoomHandler:
             if current_player_count >= max_players:
                 print(f"❌ Room full! {current_player_count} >= {max_players}")
                 emit('error_event', {'message': 'The room you were trying to reach seems full.'}, room=request.sid)
+                # DON'T join the socket room, DON'T add to players array
                 return
 
             if not is_name_available(room["players"], name):
                 emit('error_event', {'message': 'That name is already taken.'}, room=request.sid)
                 return
 
+            # ALL VALIDATION PASSED - Now add the player
             player_id = str(uuid.uuid4())
             room["players"].append({"id": player_id, "name": name, "avatar": user_avatar, "socket_id": request.sid})
             room["lobby_events"].append(f"{name} has joined the game.")
@@ -108,7 +110,9 @@ class RoomHandler:
             # Update room in database
             self.db_manager.update_room(room_id, room)
 
+            # Join socket room AFTER being added to players array
             join_room(room_id)
+            
             # Send confirmation with their new ID
             emit('join_confirmation', {'playerId': player_id, 'roomId': room_id}, room=request.sid)
 
@@ -131,6 +135,8 @@ class RoomHandler:
                 emit('error_event', {'message': 'The room you were trying to reach doesn\'t exist anymore.'}, room=request.sid)
                 return
             
+            print(f"🔍 BEFORE LEAVE - Players: {[p['name'] for p in room['players']]}")
+            
             # Find the player in the room
             player_to_remove = next((p for p in room["players"] if p["id"] == player_id), None)
             if not player_to_remove:
@@ -147,6 +153,8 @@ class RoomHandler:
             # Remove the player from the room
             room["players"] = [p for p in room["players"] if p["id"] != player_id]
             room["lobby_events"].append(f"{player_name} has left the game.")
+            
+            print(f"🔍 AFTER LEAVE - Players: {[p['name'] for p in room['players']]}")
             
             # Leave the socket room
             leave_room(room_id)
@@ -167,7 +175,12 @@ class RoomHandler:
                 room["lobby_events"].append(f"{new_host_name} is the new host.")
         
             # Update room in database
+            print(f"🔍 UPDATING DATABASE - Players before update: {[p['name'] for p in room['players']]}")
             self.db_manager.update_room(room_id, room)
+            
+            # Verify the update worked
+            verify_room = self.db_manager.get_room(room_id)
+            print(f"🔍 VERIFY DATABASE - Players after update: {[p['name'] for p in verify_room['players']]}")
         
         # Update all remaining players in the room
         self.game_manager.emit_state_update(room_id)

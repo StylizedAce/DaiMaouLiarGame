@@ -37,27 +37,75 @@ class ConnectionHandler:
                     player_id = player_to_update["id"]
                     player_name = player_to_update["name"]
                     
-                    # Mark player as disconnected instead of removing them
+                    # If in waiting phase, remove completely
+                    if room["phase"] == "waiting":
+                        room["players"] = [p for p in room["players"] if p["id"] != player_id]
+                        room["lobby_events"].append(f"{player_name} has left the game.")
+                        
+                        if not room["players"]:
+                            self.db_manager.delete_room(room_id)
+                            print(f"Room {room_id} is empty and has been removed.")
+                            return
+                        
+                        if player_id == room["host_id"] and room["players"]:
+                            room["host_id"] = room["players"][0]["id"]
+                            new_host_name = room["players"][0]["name"]
+                            room["lobby_events"].append(f"{new_host_name} is the new host.")
+                        
+                        self.db_manager.update_room(room_id, room)
+                        room_to_update = room_id
+                        break
+                    
+                    # For active game: Mark as disconnected
+                    print(f"Player {player_name} disconnected during {room['phase']} phase")
                     player_to_update["disconnected"] = True
                     player_to_update["disconnect_time"] = time.time()
-                    player_to_update.pop("socket_id", None)  # Remove socket_id safely
+                    player_to_update.pop("socket_id", None)
+                    
+                    # Save submission state
+                    player_to_update["had_submitted"] = player_id in room.get("answers", {})
+                    player_to_update["was_ready"] = player_id in room.get("ready_to_vote", [])
+                    
                     room["lobby_events"].append(f"{player_name} has disconnected.")
                     
-                    # Check if we need to clean up expired disconnected players
-                    current_time = time.time()
-                    expired_players = [p for p in room["players"] if p.get("disconnected") and (current_time - p.get("disconnect_time", 0)) > 60]
+                    # Remove game data based on phase
+                    # Only remove answers if in question phase (answers aren't public yet)
+                    if room["phase"] == "question" and player_id in room.get("answers", {}):
+                        del room["answers"][player_id]
+                        print(f"   Removed answer (question phase)")
                     
-                    # Remove expired disconnected players
+                    # Always remove votes and ready status (can be resubmitted)
+                    if player_id in room.get("votes", {}):
+                        del room["votes"][player_id]
+                    
+                    if player_id in room.get("ready_to_vote", []):
+                        room["ready_to_vote"].remove(player_id)
+                        print(f"   Removed from ready_to_vote")
+                    
+                    # Remove from liar votes
+                    if "liarVotes" in room:
+                        for target_id, voters in list(room["liarVotes"].items()):
+                            if player_id in voters:
+                                voters.remove(player_id)
+                        if player_id in room["liarVotes"]:
+                            del room["liarVotes"][player_id]
+                    
+                    # Clean up expired players
+                    current_time = time.time()
+                    expired_players = [p for p in room["players"] 
+                                    if p.get("disconnected") and (current_time - p.get("disconnect_time", 0)) > 30]
+                    
                     for expired_player in expired_players:
                         room["players"] = [p for p in room["players"] if p["id"] != expired_player["id"]]
                         room["lobby_events"].append(f"{expired_player['name']} has been removed (reconnect timeout).")
+                        print(f"   Removed expired player: {expired_player['name']}")
                     
-                   # Get active (non-disconnected) players
+                    from utils.helpers import get_active_players
                     active_players = get_active_players(room["players"])
+                    
+                    print(f"   Active players remaining: {len(active_players)} - {[p['name'] for p in active_players]}")
 
-                    # Check if only 1 active player remains AND game has started
-                    if len(active_players) == 1 and room["phase"] != "waiting":
-                        # Kick the last player with a message
+                    if len(active_players) == 1:
                         last_player = active_players[0]
                         last_player_sid = last_player.get("socket_id")
                         if last_player_sid:
@@ -65,30 +113,54 @@ class ConnectionHandler:
                                 'message': 'You were the only player left in the game.'
                             }, room=last_player_sid)
                         
-                        # Delete the room
                         self.db_manager.delete_room(room_id)
                         print(f"Room {room_id} had only 1 active player and was deleted.")
                         return
                     
-                    # Check if no active players
                     if not active_players:
                         self.db_manager.delete_room(room_id)
                         print(f"Room {room_id} has no active players and has been removed.")
                         return
 
-                    # If the disconnected player was the host, assign a new host from active players
                     if player_id == room["host_id"] and active_players:
                         room["host_id"] = active_players[0]["id"]
                         new_host_name = active_players[0]["name"]
                         room["lobby_events"].append(f"{new_host_name} is the new host.")
 
-                    # Update the room in database
+                    self.check_phase_transition_after_disconnect(room, room_id, active_players)
+
                     self.db_manager.update_room(room_id, room)
                     room_to_update = room_id
                     break
         
         if room_to_update:
             self.game_manager.emit_state_update(room_to_update)
+
+    def check_phase_transition_after_disconnect(self, room, room_id, active_players):
+        """Check if phase should transition after a player disconnects."""
+        phase = room["phase"]
+        
+        if phase == "question":
+            # Check if all ACTIVE players have submitted
+            answers_count = len(room.get("answers", {}))
+            print(f"   Question phase: {answers_count} answers, {len(active_players)} active players")
+            if answers_count == len(active_players) and len(active_players) > 0:
+                print(f"   All active players answered, transitioning to voting")
+                room["phase"] = "voting"
+                room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
+                room["lobby_events"].append("All answers are in! Time to vote.")
+                room['ready_to_vote'] = []
+        
+        elif phase == "voting":
+            # Check if all ACTIVE players are ready
+            ready_count = len(room.get("ready_to_vote", []))
+            print(f"   Voting phase: {ready_count} ready, {len(active_players)} active players")
+            if ready_count == len(active_players) and len(active_players) > 0:
+                print(f"   All active players ready, transitioning to vote_selection")
+                room['phase'] = 'vote_selection'
+                room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
+                room["lobby_events"].append("Time to vote for the imposter!")
+                room["liarVotes"] = {}
     
     def handle_rejoin_game(self, data):
         """Handle player rejoin request."""
@@ -123,47 +195,55 @@ class ConnectionHandler:
                     return
 
                 disconnect_time = player_to_rejoin.get("disconnect_time", 0)
-                if time.time() - disconnect_time > 60:
-                    print(f"❌ Reconnection time window expired for player {player_id}")
+                elapsed = time.time() - disconnect_time
+                if elapsed > 30:
+                    print(f"❌ Reconnection time window expired ({elapsed:.1f}s)")
                     emit('error', {"message": "Reconnection time window has expired."})
                     return
 
-                print(f"✅ Player {player_id} is eligible to rejoin room {room_id}")
+                print(f"✅ Player rejoining (disconnected for {elapsed:.1f}s)")
 
+                # Restore connection
                 player_to_rejoin["disconnected"] = False
                 player_to_rejoin.pop("disconnect_time", None)
                 player_to_rejoin["socket_id"] = request.sid
-
-                print(f"🔗 Joining socket room {room_id}")
+                
+                # 🆕 Restore their submission state if they had submitted before
+                had_submitted = player_to_rejoin.pop("had_submitted", False)
+                was_ready = player_to_rejoin.pop("was_ready", False)
+                
+                print(f"   Restoring state: had_submitted={had_submitted}, was_ready={was_ready}")
+                
+                # 🆕 They need to resubmit - DON'T restore old data
+                # This ensures fresh submissions and prevents stale data
+                
                 join_room(room_id)
                 
                 room["lobby_events"].append(f"{player_to_rejoin['name']} has reconnected.")
 
-                print(f"💾 Updating room in database")
                 self.db_manager.update_room(room_id, room)
 
-            # Emissions must happen after the room data is fully updated
+            # Send updated state
             room_state = self.game_manager.get_room_state(room_id)
             
-            # We need to manually emit to the reconnected player first to prevent race conditions.
-            player = self.game_manager.get_player_info_by_id(room_state["players"], player_id)
-            if player and room_state["phase"] == "question":
+            # Send personal info if in question phase
+            if room_state["phase"] == "question":
                 personal_info = {
                     "role": room["roles"].get(player_id),
                     "question": room["questions"].get(player_id)
                 }
-                emit('personal_game_info', personal_info, room=player["socket_id"])
+                emit('personal_game_info', personal_info, room=request.sid)
 
             emit('reconnect_player', {
                 'success': True,
                 'message': 'Successfully reconnected to the game',
                 'gameState': room_state,
-                'playerId': player_id
+                'playerId': player_id,
+                'needsResubmit': True  # 🆕 Signal to frontend they need to resubmit
             }, room=request.sid)
 
-            print(f"🌐 Emitting state update to all players in room {room_id}")
             self.game_manager.emit_state_update(room_id)
-            print(f"✅ Rejoin process completed for player {player_id}")
+            print(f"✅ Rejoin completed for player {player_id}")
             
         except Exception as e:
             print(f"❌ Error in rejoin_game: {e}")

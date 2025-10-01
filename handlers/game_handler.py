@@ -32,56 +32,61 @@ class GameHandler:
             
             room["settings"] = settings 
 
-            # Validation: Only the host can start, and only with enough players
             if room["host_id"] != player_id:
                 emit('error_event', {'message': 'Only the host can start the game.'}, room=request.sid)
                 return
-            if len(room["players"]) < 2:  # Min 2 players
+            if len(room["players"]) < 2:
                 emit('error_event', {'message': 'You need at least 2 players to start.'}, room=request.sid)
                 return
             
-            # --- Start Game Logic ---
-            players = room["players"]
+            # 🆕 Get active players only
+            from utils.helpers import get_active_players
+            active_players = get_active_players(room["players"])
+            
+            print(f"🎮 GAME START DEBUG:")
+            print(f"   Total players in room: {len(room['players'])}")
+            print(f"   Active players: {len(active_players)} - {[p['name'] for p in active_players]}")
+            print(f"   Game mode: {settings.get('gameMode', 'normal')}")
+            
             q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []))
             room["main_question"] = q_pair[0]
 
-            # Initialize round data
             total_rounds = settings.get("totalRounds", 5) if settings else 5
             room['current_round'] = 1
             room['total_rounds'] = total_rounds
 
-            # Determine impostor count based on game mode
             game_mode = room.get("settings", {}).get("gameMode", "normal")
             if game_mode == "mayhem":
-                impostor_count = self.game_manager.get_mayhem_impostor_count(len(players))
+                impostor_count = self.game_manager.get_mayhem_impostor_count(len(active_players))
             else:
                 impostor_count = 1
 
-            # Select impostors
-            impostors = random.sample(players, impostor_count) if impostor_count > 0 else []
+            print(f"   Impostor count: {impostor_count}")
+
+            # 🆕 Select impostors from ACTIVE players
+            impostors = random.sample(active_players, impostor_count) if impostor_count > 0 else []
             impostor_ids = [imp["id"] for imp in impostors]
 
-            # Store impostor info (update to handle multiple)
+            print(f"   Selected impostors: {[imp['name'] for imp in impostors]}")
+
             room["impostor_ids"] = impostor_ids
             room["imposter_id"] = impostor_ids[0] if impostor_ids else None
 
-            # Assign roles and questions
-            for p in players:
+            # Assign roles to ALL players (including any disconnected)
+            for p in room["players"]:
                 is_imposter = p["id"] in impostor_ids
                 room["roles"][p["id"]] = "imposter" if is_imposter else "normal"
                 room["questions"][p["id"]] = q_pair[1] if is_imposter else q_pair[0]
+                print(f"   {p['name']}: {room['roles'][p['id']]} - Q: {room['questions'][p['id']][:50]}...")
 
             room["answers"], room["votes"], room["results"] = {}, {}, {}
             
-            # Emit game_starting event to trigger animation for all players FIRST
             self.socketio.emit('game_starting', room=room_id)
             
-            # Immediately proceed with normal game transition
             room["phase"] = "question"
             room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000
             room["lobby_events"].append("The game has started!")
             
-            # Update room in database
             self.db_manager.update_room(room_id, room)
 
         self.game_manager.emit_state_update(room_id, room)
@@ -107,8 +112,23 @@ class GameHandler:
             else:
                 room["lobby_events"].append(f"{player_name} updated their answer.")
 
-            # Check if all players have answered
-            if len(room["answers"]) == len(room["players"]):
+            # Check if all ACTIVE players have answered
+            from utils.helpers import get_active_players
+            active_players = get_active_players(room["players"])
+            
+            # Get list of active player IDs for comparison
+            active_player_ids = [p["id"] for p in active_players]
+            # Count how many active players have submitted
+            active_submitted = [pid for pid in room["answers"].keys() if pid in active_player_ids]
+            
+            print(f"🔍 SUBMIT CHECK - Total players: {len(room['players'])}, Active: {len(active_players)}")
+            print(f"   Active player IDs: {active_player_ids}")
+            print(f"   All answers from: {list(room['answers'].keys())}")
+            print(f"   Active players who submitted: {active_submitted}")
+            print(f"   Count: {len(active_submitted)} / {len(active_players)}")
+            
+            if len(active_submitted) == len(active_players):
+                print(f"   ✅ All active players submitted - transitioning to voting")
                 room["phase"] = "voting"
                 room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
                 room["lobby_events"].append("All answers are in! Time to vote.")
@@ -117,7 +137,6 @@ class GameHandler:
             # Update room in database
             self.db_manager.update_room(room_id, room)
         
-        # We pass the updated 'room' object directly to prevent a race condition.
         self.game_manager.emit_state_update(room_id, room)
     
     def handle_remove_answer(self, data):
@@ -193,10 +212,18 @@ class GameHandler:
         # Emit state update first
         self.game_manager.emit_state_update(room_id)
         
-        # Then check if we need to transition
+        # Then check if we need to transition - USE ACTIVE PLAYERS
+        from utils.helpers import get_active_players
         room = self.db_manager.get_room(room_id)
-        if room and len(room.get('ready_to_vote', [])) == len(room['players']):
-            self.game_manager.transition_to_vote_selection(room_id)
+        if room:
+            active_players = get_active_players(room['players'])
+            ready_count = len(room.get('ready_to_vote', []))
+            active_count = len(active_players)
+            
+            print(f"🔍 READY CHECK - Ready: {ready_count}, Active: {active_count}, Active players: {[p['name'] for p in active_players]}")
+            
+            if ready_count == active_count:
+                self.game_manager.transition_to_vote_selection(room_id)
     
     def handle_liar_vote(self, data):
         """Handle liar vote submission."""
