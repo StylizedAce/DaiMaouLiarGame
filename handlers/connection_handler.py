@@ -143,20 +143,38 @@ class ConnectionHandler:
         if phase == "question":
             # Check if all ACTIVE players have submitted
             answers_count = len(room.get("answers", {}))
-            print(f"   Question phase: {answers_count} answers, {len(active_players)} active players")
+            active_count = len(active_players)
+            
+            # Get the actual player IDs who have submitted
+            submitted_ids = list(room.get("answers", {}).keys())
+            active_ids = [p["id"] for p in active_players]
+            
+            print(f"   🔍 PHASE TRANSITION CHECK (question):")
+            print(f"      Active players: {active_count} - {[p['name'] for p in active_players]}")
+            print(f"      Active IDs: {active_ids}")
+            print(f"      Submitted count: {answers_count}")
+            print(f"      Submitted IDs: {submitted_ids}")
+            print(f"      All active submitted? {answers_count == active_count and active_count > 0}")
+            
             if answers_count == len(active_players) and len(active_players) > 0:
-                print(f"   All active players answered, transitioning to voting")
+                print(f"   ✅ All active players answered, transitioning to voting")
                 room["phase"] = "voting"
                 room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
                 room["lobby_events"].append("All answers are in! Time to vote.")
                 room['ready_to_vote'] = []
         
         elif phase == "voting":
-            # Check if all ACTIVE players are ready
+            # Similar detailed logging for voting phase
             ready_count = len(room.get("ready_to_vote", []))
-            print(f"   Voting phase: {ready_count} ready, {len(active_players)} active players")
+            active_count = len(active_players)
+            
+            print(f"   🔍 PHASE TRANSITION CHECK (voting):")
+            print(f"      Ready count: {ready_count}")
+            print(f"      Active count: {active_count}")
+            print(f"      All active ready? {ready_count == active_count and active_count > 0}")
+            
             if ready_count == len(active_players) and len(active_players) > 0:
-                print(f"   All active players ready, transitioning to vote_selection")
+                print(f"   ✅ All active players ready, transitioning to vote_selection")
                 room['phase'] = 'vote_selection'
                 room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
                 room["lobby_events"].append("Time to vote for the imposter!")
@@ -208,14 +226,11 @@ class ConnectionHandler:
                 player_to_rejoin.pop("disconnect_time", None)
                 player_to_rejoin["socket_id"] = request.sid
                 
-                # 🆕 Restore their submission state if they had submitted before
+                # 🔧 FIX: Check if they had already submitted/voted BEFORE disconnecting
                 had_submitted = player_to_rejoin.pop("had_submitted", False)
                 was_ready = player_to_rejoin.pop("was_ready", False)
                 
                 print(f"   Restoring state: had_submitted={had_submitted}, was_ready={was_ready}")
-                
-                # 🆕 They need to resubmit - DON'T restore old data
-                # This ensures fresh submissions and prevents stale data
                 
                 join_room(room_id)
                 
@@ -234,12 +249,14 @@ class ConnectionHandler:
                 }
                 emit('personal_game_info', personal_info, room=request.sid)
 
+            # 🔧 FIX: Tell frontend their exact submission state
             emit('reconnect_player', {
                 'success': True,
                 'message': 'Successfully reconnected to the game',
                 'gameState': room_state,
                 'playerId': player_id,
-                'needsResubmit': True  # 🆕 Signal to frontend they need to resubmit
+                'hadSubmitted': had_submitted,  # ✅ Frontend needs this
+                'wasReady': was_ready            # ✅ Frontend needs this
             }, room=request.sid)
 
             self.game_manager.emit_state_update(room_id)

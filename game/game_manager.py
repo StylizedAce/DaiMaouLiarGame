@@ -31,13 +31,13 @@ class GameManager:
             if not room:
                 return None
 
-            # Base state visible to everyone
+            # 🔧 CRITICAL: Only show active players in state
             active_players = [p for p in room["players"] if not p.get("disconnected")]
             
             state = {
                 "roomId": room_id,
                 "phase": room["phase"],
-                "players": active_players,
+                "players": active_players,  # ✅ Only active
                 "hostId": room["host_id"],
                 "lobbyEvents": room["lobby_events"],
                 "settings": room.get("settings", {}),
@@ -47,13 +47,19 @@ class GameManager:
 
             if room["phase"] == "question":
                 state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
-                state["submittedCount"] = len(room.get("answers", {}))
                 
-                # Build the answers list
+                # 🔧 FIX: Only count submissions from ACTIVE players
+                active_player_ids = {p["id"] for p in active_players}
+                active_answers = {pid: ans for pid, ans in room.get("answers", {}).items() 
+                                if pid in active_player_ids}
+                
+                state["submittedCount"] = len(active_answers)
+                
+                # Build answers list (only active players)
                 answers_list = []
-                for player_id, answer in room.get("answers", {}).items():
+                for player_id, answer in active_answers.items():
                     player = self.get_player_info_by_id(room["players"], player_id)
-                    if player:
+                    if player and not player.get("disconnected"):
                         answers_list.append({
                             "playerId": player_id,
                             "name": player["name"],

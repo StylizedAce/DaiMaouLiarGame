@@ -1,4 +1,4 @@
-# main.py - Main entry point for Dai Maou Liar Game
+# main.py - Main entry point for Kellak Lies Game
 import os
 from flask import Flask
 from flask_socketio import SocketIO
