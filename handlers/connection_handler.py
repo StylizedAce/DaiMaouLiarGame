@@ -199,6 +199,15 @@ class ConnectionHandler:
                     print(f"❌ Room {room_id} does not exist")
                     emit('error', {"message": "Room does not exist."})
                     return
+                
+                requested_language = data.get("language", "en")
+                room_language = room.get("language", "en")
+                if requested_language != room_language:
+                    emit('reconnect_player', {
+                        'success': False,
+                        'message': "Room doesn't exist"
+                    }, room=request.sid)
+                    return
 
                 player_to_rejoin = next((p for p in room["players"] if p["id"] == player_id), None)
                 

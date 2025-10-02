@@ -22,6 +22,8 @@ class RoomHandler:
         room_id = sanitize_string(data.get("roomId"))
         name = sanitize_string(data.get("name"))
         user_avatar = data.get("avatar")
+        language = data.get("language", "en")
+        print(f"   Language received from frontend: {language}")  # ADD THIS
         
         print(f"Create room request: {request.sid} for room {room_id} with name {name} and avatar {user_avatar}")
 
@@ -39,6 +41,7 @@ class RoomHandler:
                 "players": [{"id": player_id, "name": name, "avatar": user_avatar, "socket_id": request.sid}],
                 "host_id": player_id,  # First player is the host
                 "phase": "waiting",
+                "language": language,
                 "imposter_id": None,
                 "roles": {},
                 "questions": {},
@@ -49,14 +52,16 @@ class RoomHandler:
                 "main_question": None,
                 'ready_to_vote': [],
                 'current_round': 1,
-                'total_rounds': 5
+                'total_rounds': 5,
+                'used_question_indexes': []
             }
             
             # Create room in database
             self.db_manager.create_room(room_id, room_data)
 
             join_room(room_id)
-            emit('join_confirmation', {'playerId': player_id, 'roomId': room_id}, room=request.sid)
+            print(f"   About to emit join_confirmation with language: {language}")
+            emit('join_confirmation', {'playerId': player_id, 'roomId': room_id, 'language': language}, room=request.sid)
 
         self.game_manager.emit_state_update(room_id)
     
@@ -75,12 +80,21 @@ class RoomHandler:
         with self.game_manager.lock:
             room = self.db_manager.get_room(room_id)
             if not room:
-                emit('error_event', {'message': 'The room you were trying to reach doesn\'t exist anymore.'}, room=request.sid)
+                # Get default language if room doesn't exist
+                requested_language = data.get("language", "en")
+                emit('error_event', {'message': self.get_error_message('room_not_found', requested_language)}, room=request.sid)
                 return
-                
+            
+            requested_language = data.get("language", "en")
+            room_language = room.get("language", "en")
+            
+            if requested_language != room_language:
+                emit('error_event', {'message': self.get_error_message('language_mismatch', room_language)}, room=request.sid)
+                return
+                            
             # Join an existing room
             if room["phase"] != "waiting":
-                emit('error_event', {'message': 'Game is already in progress.'}, room=request.sid)
+                emit('error_event', {'message': self.get_error_message('game_in_progress', room_language)}, room=request.sid)
                 return
                 
             from utils.helpers import get_active_players
@@ -94,12 +108,11 @@ class RoomHandler:
 
             if current_player_count >= max_players:
                 print(f"❌ Room full! {current_player_count} >= {max_players}")
-                emit('error_event', {'message': 'The room you were trying to reach seems full.'}, room=request.sid)
-                # DON'T join the socket room, DON'T add to players array
+                emit('error_event', {'message': self.get_error_message('room_full', room_language)}, room=request.sid)
                 return
 
             if not is_name_available(room["players"], name):
-                emit('error_event', {'message': 'That name is already taken.'}, room=request.sid)
+                emit('error_event', {'message': self.get_error_message('name_taken', room_language)}, room=request.sid)
                 return
 
             # ALL VALIDATION PASSED - Now add the player
@@ -107,14 +120,10 @@ class RoomHandler:
             room["players"].append({"id": player_id, "name": name, "avatar": user_avatar, "socket_id": request.sid})
             room["lobby_events"].append(f"{name} has joined the game.")
             
-            # Update room in database
             self.db_manager.update_room(room_id, room)
-
-            # Join socket room AFTER being added to players array
             join_room(room_id)
             
-            # Send confirmation with their new ID
-            emit('join_confirmation', {'playerId': player_id, 'roomId': room_id}, room=request.sid)
+            emit('join_confirmation', {'playerId': player_id, 'roomId': room_id, 'language': room_language}, room=request.sid)
 
         self.game_manager.emit_state_update(room_id)
     
@@ -210,20 +219,58 @@ class RoomHandler:
 
             target_socket_id = player_to_kick["socket_id"]
             player_name = player_to_kick["name"]
-
+            
+            # Get room language for translated message
+            room_language = room.get("language", "en")
+            
+            # 1. Remove player from Socket.IO room FIRST
+            leave_room(room_id, sid=target_socket_id)
+            
+            # 2. Update database
             room["players"] = [p for p in room["players"] if p["id"] != target_player_id]
             room["lobby_events"].append(f"{player_name} was kicked from the game.")
-            
-            # Update room in database
             self.db_manager.update_room(room_id, room)
 
-        # Alert the kicked player
-        emit('kicked_from_room', {"message": "You have been removed from the game."}, to=target_socket_id)
-
-        try:
-            self.socketio.disconnect(target_socket_id)
-        except Exception as e:
-            print(f"Error disconnecting socket: {e}")
-
-        # Emit full state update
+        # 3. Send kick message (they're not in the room anymore, so won't get state update)
+        print(f"🚨 EMITTING kicked_from_room to socket {target_socket_id}")
+        emit('kicked_from_room', {"message": self.get_error_message('kicked', room_language)}, to=target_socket_id)
+        
+        # 4. Now emit state update (kicked player won't receive it)
         self.game_manager.emit_state_update(room_id)
+
+
+    def get_error_message(self, key: str, room_language: str) -> str:
+        """Get translated error message"""
+        messages = {
+            'room_exists': {
+                'en': 'Room already exists.',
+                'ar': '.الغرفة موجودة سابقاً'
+            },
+            'room_full': {
+                'en': 'The room you were trying to reach seems full.',
+                'ar': '.الغرفة الي كنت تحاول توصلها ممتلئة'
+            },
+            'name_taken': {
+                'en': 'That name is already taken.',
+                'ar': '.هذا الاسم مستخدم'
+            },
+            'room_not_found': {
+                'en': "The room you were trying to reach doesn't exist anymore.",
+                'ar': '.الغرفة الي كنت تحاول توصلها مهي موجودة'
+            },
+            'game_in_progress': {
+                'en': 'Game is already in progress.',
+                'ar': '.مايمديك تدخل لعبة جارية '
+            },
+            'language_mismatch': {
+                'en': "Room language mismatch.",
+                'ar': ".عدم تطابق لغة الغرفة"
+            },
+            'kicked': {
+                'en': 'You have been removed from the game.',
+                'ar': '.تم طردك من اللعبة'
+            }
+        }
+        return messages.get(key, {}).get(room_language, messages[key]['en'])
+
+

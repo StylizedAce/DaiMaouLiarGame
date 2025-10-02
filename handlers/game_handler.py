@@ -48,8 +48,13 @@ class GameHandler:
             print(f"   Active players: {len(active_players)} - {[p['name'] for p in active_players]}")
             print(f"   Game mode: {settings.get('gameMode', 'normal')}")
             
-            q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []))
+            room_language = room.get("language", "en")
+            q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []), language=room_language)
             room["main_question"] = q_pair[0]
+
+            if "used_question_indexes" not in room:
+                room["used_question_indexes"] = []
+            room["used_question_indexes"].append(q_pair[2])
 
             total_rounds = settings.get("totalRounds", 5) if settings else 5
             room['current_round'] = 1
@@ -310,87 +315,3 @@ class GameHandler:
         
         print(f"Round transition request from player {player_id} in room {room_id}")
         self.game_manager.handle_round_transition(room_id)
-
-    def calculate_round_scores(self, room):
-        """
-        Calculate scores for the round based on voting results.
-        Returns a dictionary of player_id: points_earned
-        """
-        game_mode = room.get("settings", {}).get("gameMode", "normal")
-        impostor_ids = room.get("impostor_ids", [])
-        liar_votes = room.get("liarVotes", {})
-        players = room["players"]
-        
-        # Get all active players who participated
-        from utils.helpers import get_active_players
-        active_players = get_active_players(players)
-        active_player_ids = [p["id"] for p in active_players]
-        
-        scores = {p["id"]: 0 for p in active_players}
-        
-        # Special case: Zero impostors (only in mayhem)
-        if len(impostor_ids) == 0:
-            voters = set()
-            for target_id, voter_list in liar_votes.items():
-                voters.update(voter_list)
-            
-            for player_id in active_player_ids:
-                if player_id not in voters:
-                    scores[player_id] += 2
-                else:
-                    wrong_votes = sum(1 for voters_list in liar_votes.values() if player_id in voters_list)
-                    scores[player_id] -= wrong_votes
-            
-            return scores
-        
-        # Normal case: Calculate votes per impostor
-        total_players = len(active_player_ids)
-        
-        for impostor_id in impostor_ids:
-            votes_received = len(liar_votes.get(impostor_id, []))
-            vote_percentage = (votes_received / total_players * 100) if total_players > 0 else 0
-            
-            # Award points to impostor based on survival
-            if votes_received == 0:
-                scores[impostor_id] += 2
-            elif vote_percentage <= 50:
-                scores[impostor_id] += 1
-        
-        # Award points to voters
-        if game_mode == "mayhem":
-            for player_id in active_player_ids:
-                if player_id in impostor_ids:
-                    continue
-                
-                correct_votes = 0
-                wrong_votes = 0
-                
-                for target_id, voter_list in liar_votes.items():
-                    if player_id in voter_list:
-                        if target_id in impostor_ids:
-                            correct_votes += 1
-                        else:
-                            wrong_votes += 1
-                
-                scores[player_id] += correct_votes - wrong_votes
-        else:
-            # Normal mode: +1 if voted for the impostor, 0 otherwise
-            for player_id in active_player_ids:
-                if player_id in impostor_ids:
-                    continue
-                
-                voted_correctly = False
-                for impostor_id in impostor_ids:
-                    if player_id in liar_votes.get(impostor_id, []):
-                        voted_correctly = True
-                        break
-                
-                if voted_correctly:
-                    scores[player_id] += 1
-        
-        return scores
-
-    def get_player_name(self, players, player_id):
-        """Helper to get player name by ID."""
-        player = next((p for p in players if p["id"] == player_id), None)
-        return player["name"] if player else "Unknown"

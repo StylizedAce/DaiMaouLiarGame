@@ -30,6 +30,7 @@ class DatabaseManager:
                 players TEXT NOT NULL,  -- JSON string
                 host_id TEXT NOT NULL,
                 phase TEXT NOT NULL DEFAULT 'waiting',
+                language TEXT NOT NULL DEFAULT 'en',
                 imposter_id TEXT,
                 impostor_ids TEXT,       
                 roles TEXT,  -- JSON string
@@ -75,17 +76,18 @@ class DatabaseManager:
         
         cursor.execute('''
             INSERT INTO rooms (
-                room_id, players, host_id, phase, imposter_id, impostor_ids, roles, questions,
+                room_id, players, host_id, phase, language, imposter_id, impostor_ids, roles, questions,
                 answers, votes, results, lobby_events, main_question, ready_to_vote,
                 settings, question_phase_start_timestamp, voting_phase_start_timestamp,
                 vote_selection_start_timestamp, liar_votes, used_question_indexes,
                 current_round, total_rounds, player_scores, round_history
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             room_id,
             json.dumps(room_data.get('players', [])),
             room_data.get('host_id', ''),
             room_data.get('phase', 'waiting'),
+            room_data.get('language', 'en'),
             room_data.get('imposter_id'),
             json.dumps(room_data.get('impostor_ids', [])),
             json.dumps(room_data.get('roles', {})),
@@ -127,6 +129,7 @@ class DatabaseManager:
             'players': json.loads(row['players']),
             'host_id': row['host_id'],
             'phase': row['phase'],
+            'language': row['language'],
             'imposter_id': row['imposter_id'],
             'impostor_ids': json.loads(row['impostor_ids']) if row['impostor_ids'] else [],  # ✅ ADD
             'roles': json.loads(row['roles']),
@@ -158,7 +161,7 @@ class DatabaseManager:
         
         cursor.execute('''
             UPDATE rooms SET
-                players = ?, host_id = ?, phase = ?, imposter_id = ?, impostor_ids = ?, roles = ?,
+                players = ?, host_id = ?, phase = ?, language = ?, imposter_id = ?, impostor_ids = ?, roles = ?,
                 questions = ?, answers = ?, votes = ?, results = ?, lobby_events = ?,
                 main_question = ?, ready_to_vote = ?, settings = ?,
                 question_phase_start_timestamp = ?, voting_phase_start_timestamp = ?,
@@ -169,6 +172,7 @@ class DatabaseManager:
             json.dumps(room_data.get('players', [])),
             room_data.get('host_id', ''),
             room_data.get('phase', 'waiting'),
+            room_data.get('language', 'en'),
             room_data.get('imposter_id'),
             json.dumps(room_data.get('impostor_ids', [])),  # Add this
             json.dumps(room_data.get('roles', {})),

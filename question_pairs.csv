@@ -27,64 +27,108 @@ What's your favorite type of food?,What was the last thing you ate?
 What's your dream vacation?,What's your next planned trip?
 What's your biggest fear?,What's something you dislike?
 What's your favorite movie?,What's the last movie you watched?
-What’s your favorite animal?,What pet do you have?
-What's your preferred mode of transportation?,What's an activity you enjoy during your commute?
 What's a skill you'd like to master in the next year?,What's a personal goal you've set for yourself?
 What's your ideal way to spend a long weekend?,What's a popular tourist destination you'd like to visit?
 What's one thing you always carry with you?,What's a small item that brings you joy?
 What's your favorite type of music to workout to?,What's a song that always gets you energized?
-What's a simple pleasure that makes your day better?,What's a daily ritual you look forward to?
 What's a book or movie that changed your perspective?,What's a story or narrative that deeply impacted you?
 What's your most treasured possession?,What's an item you would save from a burning house?
 What's a sound that instantly relaxes you?,What's an environment or setting where you feel most at peace?
 What's a piece of advice you'd give your younger self?,What's a lesson you've learned the hard way?
 What's your favorite way to express creativity?,What's a project you've always wanted to start?
 What's an outdoor activity you enjoy?,What's a natural landscape you find beautiful?
-What's a historical event you'd like to witness?,What's a significant moment from the past you find fascinating?
-What's your preferred type of weather?,What's a weather phenomenon you find impressive?
+What's your preferred type of weather?,What's a weather type you absolutely hate?
 What's a food you could eat every day?,What's a meal you find consistently satisfying?
-What's a cause you feel strongly about?,What's a societal issue you believe needs more attention?
 What's a unique talent you have?,What's a skill that often surprises people when they learn you have it?
 What's a TV show you're currently binge-watching?,What's a fictional world you'd love to visit?
 What's a place you feel most at home?,What's a destination that evokes a sense of comfort or belonging for you?
 What's a goal you're working towards outside of work/school?,What's a personal achievement you're proud of?
 What's an app you can't live without?,What's a piece of technology that makes your life easier?
-What's a type of architecture you admire?,What's a building or structure that impresses you?
 What's a phrase or quote that resonates with you?,What's a piece of wisdom you often recall?
-What's your ideal pet?,What's an animal that you find particularly endearing?
-What's a color that makes you feel happy?,What's a visual element that always catches your eye?
-What's an instrument you wish you could play?,What's a musical performance you've enjoyed?
-What's a type of art or artist you appreciate?,What's a creative work that has left a lasting impression on you?
 What's a game you loved as a child?,What's a nostalgic activity from your youth?
-What's your favorite smell?,What's a scent that evokes a strong memory for you?
 What's a historical figure you'd like to meet?,What's a person from the past you find inspiring?
-What's a type of exercise you enjoy?,What's a physical activity that makes you feel good?
 What's a small act of kindness you've witnessed or performed?,What's a positive interaction that brightened your day?
-What's a unique tradition you have?,What's a ritual or custom that holds personal meaning for you?
-What's a type of plant or flower you admire?,What's a natural element that brings beauty to your surroundings?
 What's a historical period you'd like to live in?,What's a time in history that fascinates you?
-What's your favorite way to learn new things?,What's a topic you're currently curious about?
 What's a social media platform you enjoy?,What's a digital space where you feel connected?
-What's a type of puzzle or brain game you like?,What's a mental challenge you find engaging?
-What's a characteristic you value most in a friend?,What's a quality that makes someone a good companion?
+What's a characteristic you value most in a friend?,What's a characteristic you hate most in a friend?
 What's a dish you love to cook or bake?,What's a recipe that brings you comfort?
-What's a type of vehicle you'd love to own?,What's a form of transportation that excites you?
-What's a natural wonder you'd like to see?,What's a breathtaking landscape you've encountered?
-What's a type of footwear you find most comfortable?,What's an accessory that completes your outfit?
-What's a type of coffee or tea you prefer?,What's a beverage that helps you start your day?
-What's a type of building or architecture you find impressive?,What's a structure that stands out to you?
-What's a type of fabric or material you enjoy the feel of?,What's a texture that you find pleasing?
-What's a type of plant that you find beautiful?,What's a botanical element that brings you joy?
-What's a type of performance art you enjoy?,What's a live show that left an impression on you?
-What's a sound that makes you feel nostalgic?,What's an auditory experience that transports you back in time?
-What's a type of bread or pastry you love?,What's a baked good that you find irresistible?
-What's a piece of furniture you find essential?,What's an item that makes a space feel cozy?
-What's a type of cloud formation you find interesting?,What's a natural pattern you often observe?
-What's a type of hat or headwear you like?,What's an item that adds style to an outfit?
-What's a type of bag or backpack you prefer?,What's a carry-all item you find most useful?
-What's a type of bridge that fascinates you?,What's an engineering marvel that impresses you?
-What's a type of glass or crystal you admire?,What's a material that catches the light beautifully?
-What's a type of rock or mineral you find appealing?,What's a geological formation that intrigues you?
-What's a type of bird song you recognize?,What's a natural sound that you find pleasant?
-What's a type of knot you know how to tie?,What's a practical skill you possess?
-What's a type of puzzle you enjoy solving?,What's a mental exercise that you find stimulating?
+How many hours of sleep do you usually get?,Pick a number from 1 to 12
+What's your favorite fast food chain?,What's the worst fast food chain?
+What's the longest you've stayed awake?,Pick a number from 1 to 72
+What's your favorite thing to put on pizza?,What's the worst pizza topping?
+How many phone numbers do you have memorized?,Pick a number from 0 to 20
+Which social media app do you use the most?,Which social media app do you think is dying?
+What's the weirdest food you've ever tried?,What's a food you’d never try?
+What’s the first thing you do in the morning?,What’s the last thing you do before bed?
+What's your favorite drink?,What's a drink you dislike?
+What's your favorite subject in school?,What's a subject you hated in school?
+How many hours a day do you spend on your phone?,Pick a number from 1 to 24
+What's your favorite snack?,What's a snack you never buy?
+How many languages can you speak?,Pick a number from 1 to 10
+What's your favorite fruit?,What's a fruit you dislike?
+How many siblings do you have?,Pick a number from 0 to 10
+What's your favorite sport to watch?,What's a sport you think is boring?
+How many times do you brush your teeth per day?,Pick a number from 0 to 5
+What's your favorite time of the day?,What's your least favorite time of the day?
+How many times have you moved houses?,Pick a number from 0 to 20
+What's your favorite vegetable?,What's a vegetable you hate?
+How many hours a day do you spend on the internet?,Pick a number from 1 to 24
+What's your favorite dessert?,What's a dessert you don't like?
+How many cups of coffee or tea do you drink per day?,Pick a number from 0 to 15
+What's your favorite season?,What's a season that feels too long?
+How many countries have you visited?,Pick a number from 0 to 50
+What's your favorite ice cream flavor?,What's the worst ice cream flavor?
+How many pairs of shoes do you own?,Pick a number from 1 to 30
+What's your favorite smartphone brand?,What's the most overrated smartphone brand?
+What's your favorite place to relax?,What's a place you avoid when you need peace?
+How many unread notifications do you usually have on your phone?,Pick a number from 0 to 500
+What's your favorite type of bread?,What's a bread you don’t like?
+What's your favorite childhood cartoon?,What's a cartoon you never liked?
+What's your favorite thing to eat for breakfast?,What's something you avoid at breakfast?
+How many pictures do you think you have on your phone?,Pick a number from 0 to 10000
+What's your favorite board game?,What's a board game you find boring?
+How many hours do you spend on your phone per day?,Pick a number from 1 to 24
+What's your favorite fruit?,What's a fruit you eat rarely?
+How many pairs of shoes do you own?,Pick a number from 1 to 30
+What's the best meal you've ever had?,What's a meal you regret eating?
+What's your favorite subject in school?,What's a subject you found difficult?
+What's a song you never get tired of?,What's a song you stopped liking fast?
+What's a drink you enjoy with food?,What's a drink you never order with food?
+How many times do you eat rice in a week?,Pick a number from 0 to 20
+What's your favorite sport to play?,What's a sport you like watching but not playing?
+How many countries have you visited?,Pick a number from 0 to 50
+How many times a week do you eat outside?,Pick a number from 0 to 20
+What's your favorite app on your phone?,What's an app you don’t use anymore?
+How many times have you traveled by plane?,Pick a number from 0 to 50
+What's your favorite TV show?,What's a show you quit watching?
+How many pets have you owned?,Pick a number from 0 to 20
+What's the funniest video you’ve ever seen?,What's the most annoying video trend?
+How many messages do you send per day?,Pick a number from 0 to 500
+What's the coolest gift you’ve ever received?,What's a gift you didn’t know what to do with?
+What's a movie you could rewatch anytime?,What's a movie you liked but wouldn’t rewatch?
+How many times do you check social media per day?,Pick a number from 1 to 100
+How many apps do you have on your phone?,Pick a number from 1 to 200
+What's the first app you open when you wake up?,What's an app you rarely open?
+How many times have you changed your hairstyle?,Pick a number from 1 to 20
+What's a skill you learned during lockdown?,What's a skill you wish you had?
+How many hours do you spend watching videos per day?,Pick a number from 1 to 15
+What's your favorite thing to do on a rainy day?,What's something you never do when it rains?
+How many times do you order food delivery per month?,Pick a number from 0 to 30
+What do you usually do right before sleeping?,What's something that keeps you awake at night?
+"If you could visit any country next year, where would you go?",Which country would you never visit?
+What's the best thing to eat with rice?,What's a rice dish you find boring?
+What's the best thing to eat with fries?,What's something that doesn't go with fries?
+"If you had to pick one meal to eat every day for the rest of your life, what would it be?",What's a meal you'd get tired of quickly?
+How many times have you been to the dentist in your life?,Pick a number from 1 to 50
+What's your favorite thing to eat for dinner?,What's something you avoid eating for dinner?
+What's a TV show everyone loves but you don't?,What's a TV show you stopped watching?
+What's your favorite movie genre?,What's a movie genre you never watch?
+How many times have you rewatched your favorite show?,Pick a number from 1 to 20
+What's the last show that made you cry?,What's the saddest movie you've seen?
+What's a game you're really good at?,What's a popular game you're terrible at?
+What's your favorite outdoor spot?,What's an outdoor place that's always crowded?
+What's the best time to go outside?,What's the worst time to be outside?
+What's your favorite thing about being outdoors?,What ruins a good outdoor experience?
+What's your favorite time to take a shower?,What's the worst time to take a shower?
+What do you do when you're waiting for someone?,What do you do if someone is making you wait?
+What's something you always forget at home?,What's something you never leave home without?

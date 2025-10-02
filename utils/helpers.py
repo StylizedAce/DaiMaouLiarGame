@@ -7,48 +7,45 @@ import pandas as pd
 import random
 
 
-def get_question_pair(used_indexes=None):
-    """
-    Returns a single random question pair (normal, imposter) and its index.
-    Avoids previously used indexes for the current room session.
-    
-    Args:
-        used_indexes (list): List of question indexes already used in this room session
-        
-    Returns:
-        tuple: ((normal_question, imposter_question), selected_index) or None on failure
-    """
+def get_question_pair(used_indexes=None, language='en'):
+    """Returns a single random question pair (normal, imposter) and its index."""
     if used_indexes is None:
         used_indexes = []
     
+    print(f"🔍 get_question_pair called with language: {language}")
+    print(f"🔍 used_indexes received: {used_indexes}")
+    
     try:
-        df = pd.read_csv('question_pairs.csv')
-        if df.empty:
-            raise ValueError("CSV file is empty.")
+        # Select CSV file based on language
+        csv_file = 'question_pairs_ar.csv' if language == 'ar' else 'question_pairs.csv'
+        print(f"🔍 Loading CSV file: {csv_file}")
         
-        # Get available indexes (excluding used ones)
+        df = pd.read_csv(csv_file)
+        if df.empty:
+            raise ValueError(f"{csv_file} is empty.")
+        
         all_indexes = list(range(len(df)))
         available_indexes = [i for i in all_indexes if i not in used_indexes]
         
+        print(f"🔍 Total questions in CSV: {len(all_indexes)}")
+        print(f"🔍 Available indexes after filtering: {available_indexes}")
+        
         if not available_indexes:
-            print("WARNING: All questions have been used. Resetting question pool.")
-            available_indexes = all_indexes  # Reset if all questions used
+            print("⚠️ WARNING: All questions used. Resetting pool.")
+            available_indexes = all_indexes
         
-        # Pick random available index
         selected_index = random.choice(available_indexes)
-        
-        # Get the question pair
         row = df.iloc[selected_index]
         question_pair = (row['Normal_Question'], row['Imposter_Question'])
         
-        print(f"DEBUG: Selected question index {selected_index}: {question_pair[0]}")
-        return question_pair
+        print(f"✅ Selected question index {selected_index}: {question_pair[0][:50]}...")
+        
+        return (question_pair[0], question_pair[1], selected_index)
         
     except Exception as e:
-        print(f"DEBUG: Could not load question_pairs.csv ({e}). Using default pairs.")
-        return None  # Return None to indicate failure
-
-
+        print(f"❌ ERROR: Could not load {csv_file} ({e}). Using default pairs.")
+        return None
+        
 def validate_room_data(data, required_fields):
     """
     Validates that required fields are present in the provided data.

@@ -6,6 +6,8 @@ import time
 import random
 from threading import Lock
 
+from utils.helpers import get_question_pair
+
 
 class GameManager:
     """Manages core game logic and state transitions."""
@@ -42,7 +44,8 @@ class GameManager:
                 "lobbyEvents": room["lobby_events"],
                 "settings": room.get("settings", {}),
                 "currentRound": room.get("current_round", 1),
-                "totalRounds": room.get("total_rounds", 5)
+                "totalRounds": room.get("total_rounds", 5),
+                "language": room.get("language", "en")
             }
 
             if room["phase"] == "question":
@@ -278,8 +281,14 @@ class GameManager:
                     self.emit_state_update(room_id)
                     return
                 
-                q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []))
+                room_language = room.get("language", "en")
+                q_pair = get_question_pair(used_indexes=room.get("used_question_indexes", []), language=room_language)
                 room["main_question"] = q_pair[0]
+
+                if "used_question_indexes" not in room:
+                    room["used_question_indexes"] = []
+                room["used_question_indexes"].append(q_pair[2])
+
 
                 # Determine impostor count based on game mode
                 game_mode = room.get("settings", {}).get("gameMode", "normal")
