@@ -107,6 +107,11 @@ class GameHandler:
             if not room or room["phase"] != "question":
                 return
 
+            # ✅ CRITICAL: Only allow submissions during question phase
+            if room["phase"] != "question":
+                print(f"⚠️ Cannot submit answer - phase is {room['phase']}, not 'question'")
+                return
+
             is_new_submission = player_id not in room["answers"]
             room["answers"][player_id] = answer
 
@@ -152,6 +157,13 @@ class GameHandler:
         with self.game_manager.lock:
             room = self.db_manager.get_room(room_id)
             if not room or room["phase"] != "question": 
+                return
+
+            if room["phase"] != "question":
+                print(f"⚠️ Cannot remove answer - phase is {room['phase']}, not 'question'")
+                emit('error_event', {
+                    'message': 'Cannot edit answer after question phase has ended.'
+                }, room=request.sid)
                 return
 
             # Remove the player's answer

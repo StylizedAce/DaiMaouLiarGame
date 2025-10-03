@@ -336,12 +336,18 @@ class GameManager:
         impostor_ids = room.get("impostor_ids", [])
         liar_votes = room.get("liarVotes", {})
         players = room["players"]
+
+        # Safety check
+        if not players:
+            print("⚠️ No players in room, returning empty scores")
+            return {}
         
         from utils.helpers import get_active_players
         active_players = get_active_players(players)
         active_player_ids = [p["id"] for p in active_players]
         
-        scores = {p["id"]: 0 for p in active_players}
+        # FIX: Initialize scores for ALL players (including disconnected)
+        scores = {p["id"]: 0 for p in players}  # Changed from active_players to players
         
         # Special case: Zero impostors
         if len(impostor_ids) == 0:
@@ -353,7 +359,6 @@ class GameManager:
                 if player_id not in voters:
                     scores[player_id] += 2
                 else:
-                    # ✅ Filter out self-votes
                     wrong_votes = sum(1 for target_id, voters_list in liar_votes.items() 
                                     if player_id in voters_list and target_id != player_id)
                     scores[player_id] -= wrong_votes
@@ -364,7 +369,10 @@ class GameManager:
         total_players = len(active_player_ids)
         
         for impostor_id in impostor_ids:
-            # ✅ Filter out self-votes when counting
+            # FIX: Only calculate impostor scores if they're still in the game
+            if impostor_id not in scores:
+                continue  # Skip disconnected/removed impostors
+                
             valid_votes = [v for v in liar_votes.get(impostor_id, []) if v != impostor_id]
             votes_received = len(valid_votes)
             vote_percentage = (votes_received / total_players * 100) if total_players > 0 else 0
@@ -374,7 +382,7 @@ class GameManager:
             elif vote_percentage <= 50:
                 scores[impostor_id] += 1
         
-        # Award points to voters
+        # Award points to voters (only active players can vote)
         if game_mode == "mayhem":
             for player_id in active_player_ids:
                 if player_id in impostor_ids:
@@ -384,7 +392,6 @@ class GameManager:
                 wrong_votes = 0
                 
                 for target_id, voter_list in liar_votes.items():
-                    # ✅ Skip self-votes
                     if player_id in voter_list and target_id != player_id:
                         if target_id in impostor_ids:
                             correct_votes += 1
@@ -400,7 +407,6 @@ class GameManager:
                 
                 voted_correctly = False
                 for impostor_id in impostor_ids:
-                    # ✅ Check they voted for impostor AND it's not themselves
                     if player_id in liar_votes.get(impostor_id, []) and player_id != impostor_id:
                         voted_correctly = True
                         break
@@ -408,7 +414,7 @@ class GameManager:
                 if voted_correctly:
                     scores[player_id] += 1
         
-        return scores   
+        return scores
 
     def get_player_name(self, players, player_id):
         """Helper to get player name by ID."""

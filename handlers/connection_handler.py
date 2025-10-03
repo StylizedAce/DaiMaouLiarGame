@@ -265,7 +265,8 @@ class ConnectionHandler:
                 'gameState': room_state,
                 'playerId': player_id,
                 'hadSubmitted': had_submitted,  # ✅ Frontend needs this
-                'wasReady': was_ready            # ✅ Frontend needs this
+                'wasReady': was_ready, # ✅ Frontend needs this
+                'language': room_language
             }, room=request.sid)
 
             self.game_manager.emit_state_update(room_id)
