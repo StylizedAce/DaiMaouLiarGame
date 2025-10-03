@@ -43,8 +43,11 @@ class DatabaseManager:
                 ready_to_vote TEXT,  -- JSON string
                 settings TEXT,  -- JSON string
                 question_phase_start_timestamp INTEGER,
-                voting_phase_start_timestamp INTEGER,
+                question_phase_end_timestamp INTEGER,       
+                voting_phase_start_timestamp INTEGER,  
+                voting_phase_end_timestamp INTEGER,             
                 vote_selection_start_timestamp INTEGER,
+                vote_selection_end_timestamp INTEGER,       
                 liar_votes TEXT,  -- JSON string
                 used_question_indexes TEXT,  -- JSON string
                 current_round INTEGER DEFAULT 1,
@@ -78,10 +81,12 @@ class DatabaseManager:
             INSERT INTO rooms (
                 room_id, players, host_id, phase, language, imposter_id, impostor_ids, roles, questions,
                 answers, votes, results, lobby_events, main_question, ready_to_vote,
-                settings, question_phase_start_timestamp, voting_phase_start_timestamp,
-                vote_selection_start_timestamp, liar_votes, used_question_indexes,
+                settings, question_phase_start_timestamp, question_phase_end_timestamp,
+                voting_phase_start_timestamp, voting_phase_end_timestamp,
+                vote_selection_start_timestamp, vote_selection_end_timestamp,
+                liar_votes, used_question_indexes,
                 current_round, total_rounds, player_scores, round_history
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             room_id,
             json.dumps(room_data.get('players', [])),
@@ -100,8 +105,11 @@ class DatabaseManager:
             json.dumps(room_data.get('ready_to_vote', [])),
             json.dumps(room_data.get('settings', {})),
             room_data.get('questionPhaseStartTimestamp'),
+            room_data.get('questionPhaseEndTimestamp'), 
             room_data.get('votingPhaseStartTimestamp'),
+            room_data.get('votingPhaseEndTimestamp'),
             room_data.get('voteSelectionStartTimestamp'),
+            room_data.get('voteSelectionEndTimestamp'),  
             json.dumps(room_data.get('liarVotes', {})),
             json.dumps(room_data.get('used_question_indexes', [])),
             room_data.get('current_round', 1),
@@ -142,8 +150,11 @@ class DatabaseManager:
             'ready_to_vote': json.loads(row['ready_to_vote']),
             'settings': json.loads(row['settings']),
             'questionPhaseStartTimestamp': row['question_phase_start_timestamp'],
+            'questionPhaseEndTimestamp': row['question_phase_end_timestamp'],
             'votingPhaseStartTimestamp': row['voting_phase_start_timestamp'],
+            'votingPhaseEndTimestamp': row['voting_phase_end_timestamp'],
             'voteSelectionStartTimestamp': row['vote_selection_start_timestamp'],
+            'voteSelectionEndTimestamp': row['vote_selection_end_timestamp'],
             'liarVotes': json.loads(row['liar_votes']),
             'used_question_indexes': json.loads(row['used_question_indexes']),
             'current_round': row['current_round'],
@@ -164,8 +175,10 @@ class DatabaseManager:
                 players = ?, host_id = ?, phase = ?, language = ?, imposter_id = ?, impostor_ids = ?, roles = ?,
                 questions = ?, answers = ?, votes = ?, results = ?, lobby_events = ?,
                 main_question = ?, ready_to_vote = ?, settings = ?,
-                question_phase_start_timestamp = ?, voting_phase_start_timestamp = ?,
-                vote_selection_start_timestamp = ?, liar_votes = ?, used_question_indexes = ?,
+                question_phase_start_timestamp = ?, question_phase_end_timestamp = ?,
+                voting_phase_start_timestamp = ?, voting_phase_end_timestamp = ?,
+                vote_selection_start_timestamp = ?, vote_selection_end_timestamp = ?,
+                liar_votes = ?, used_question_indexes = ?,
                 current_round = ?, total_rounds = ?, player_scores = ?, round_history = ?
             WHERE room_id = ?
         ''', (
@@ -185,8 +198,11 @@ class DatabaseManager:
             json.dumps(room_data.get('ready_to_vote', [])),
             json.dumps(room_data.get('settings', {})),
             room_data.get('questionPhaseStartTimestamp'),
+            room_data.get('questionPhaseEndTimestamp'),
             room_data.get('votingPhaseStartTimestamp'),
+            room_data.get('votingPhaseEndTimestamp'),
             room_data.get('voteSelectionStartTimestamp'),
+            room_data.get('voteSelectionEndTimestamp'),
             json.dumps(room_data.get('liarVotes', {})),
             json.dumps(room_data.get('used_question_indexes', [])),
             room_data.get('current_round', 1),

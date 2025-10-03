@@ -50,7 +50,8 @@ class GameManager:
 
             if room["phase"] == "question":
                 state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
-                
+                state["questionPhaseEndTimestamp"] = room.get("questionPhaseEndTimestamp")
+
                 # 🔧 FIX: Only count submissions from ACTIVE players
                 active_player_ids = {p["id"] for p in active_players}
                 active_answers = {pid: ans for pid, ans in room.get("answers", {}).items() 
@@ -74,6 +75,7 @@ class GameManager:
             if room["phase"] == "voting":
                 state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
                 state["votingPhaseStartTimestamp"] = room.get("votingPhaseStartTimestamp")
+                state["votingPhaseEndTimestamp"] = room.get("votingPhaseEndTimestamp")
 
                 answers_list = []
                 for player_id, answer in room.get("answers", {}).items():
@@ -93,7 +95,8 @@ class GameManager:
                 state["questionPhaseStartTimestamp"] = room.get("questionPhaseStartTimestamp")
                 state["votingPhaseStartTimestamp"] = room.get("votingPhaseStartTimestamp")
                 state["voteSelectionStartTimestamp"] = room.get("voteSelectionStartTimestamp")
-                
+                state["voteSelectionEndTimestamp"] = room.get("voteSelectionEndTimestamp")
+
                 answers_list = []
                 for player_id, answer in room.get("answers", {}).items():
                     player = self.get_player_info_by_id(room["players"], player_id)
@@ -200,6 +203,7 @@ class GameManager:
             
             room['phase'] = 'vote_selection'
             room['voteSelectionStartTimestamp'] = int(time.time() * 1000)
+            room['voteSelectionEndTimestamp'] = int(time.time() * 1000) + 30000  # 30 seconds
             room["lobby_events"].append("Time to vote for the imposter!")
             room["liarVotes"] = {}
             room['ready_to_vote'] = []  # ✅ CLEAR the ready list for vote_selection phase
@@ -322,11 +326,13 @@ class GameManager:
                 room["liarVotes"] = {}
                 room["ready_to_vote"] = []
                 room["phase"] = "question"
-                room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000
+                room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000 
+                answer_time_seconds = room.get("settings", {}).get("answerTime", 60)
+                room["questionPhaseEndTimestamp"] = int(time.time() * 1000) + (answer_time_seconds * 1000)
                 room["lobby_events"].append(f"Round {next_round} has started!")
                 
-            # Update room in database
-            self.db_manager.update_room(room_id, room)
+        # Update room in database
+        self.db_manager.update_room(room_id, room)
 
         self.emit_state_update(room_id)
 

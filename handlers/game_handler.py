@@ -90,6 +90,8 @@ class GameHandler:
             
             room["phase"] = "question"
             room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000
+            answer_time_seconds = room.get("settings", {}).get("answerTime", 60)
+            room["questionPhaseEndTimestamp"] = int(time.time() * 1000) + (answer_time_seconds * 1000)
             room["lobby_events"].append("The game has started!")
             
             self.db_manager.update_room(room_id, room)
@@ -141,6 +143,8 @@ class GameHandler:
                 print(f"   ✅ All active players submitted - transitioning to voting")
                 room["phase"] = "voting"
                 room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
+                discuss_time_seconds = room.get("settings", {}).get("discussTime", 180)
+                room["votingPhaseEndTimestamp"] = int(time.time() * 1000) + (discuss_time_seconds * 1000)
                 room["lobby_events"].append("All answers are in! Time to vote.")
                 room['ready_to_vote'] = [] 
                 
