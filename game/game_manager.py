@@ -439,30 +439,35 @@ class GameManager:
         def transition_callback():
             time.sleep(duration_seconds)
             
-            with self.lock:
-                room = self.db_manager.get_room(room_id)
-                if not room or room['phase'] != phase_name:
-                    return  # Room gone or phase already changed
-                
-                print(f"⏱️ SERVER: {phase_name} timer expired, transitioning to {next_phase}")
-                
-                if next_phase == 'voting':
-                    room["phase"] = "voting"
-                    room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
-                    discuss_time = room.get("settings", {}).get("discussTime", 180)
-                    room["votingPhaseEndTimestamp"] = int(time.time() * 1000) + (discuss_time * 1000)
-                    room["lobby_events"].append("Time's up! Moving to voting.")
-                    room['ready_to_vote'] = []
-                    self.db_manager.update_room(room_id, room)
-                    self.emit_state_update(room_id, room)
-                    # Schedule next transition
-                    self.schedule_phase_transition(room_id, 'voting', discuss_time, 'vote_selection')
+            # Use socketio to handle the actual transition in main thread context
+            def do_transition():
+                with self.lock:
+                    room = self.db_manager.get_room(room_id)
+                    if not room or room['phase'] != phase_name:
+                        return
                     
-                elif next_phase == 'vote_selection':
-                    self.transition_to_vote_selection(room_id)
+                    print(f"⏱️ SERVER: {phase_name} timer expired, transitioning to {next_phase}")
                     
-                elif next_phase == 'results':
-                    self.handle_round_transition(room_id)
+                    if next_phase == 'voting':
+                        room["phase"] = "voting"
+                        room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
+                        discuss_time = room.get("settings", {}).get("discussTime", 180)
+                        room["votingPhaseEndTimestamp"] = int(time.time() * 1000) + (discuss_time * 1000)
+                        room["lobby_events"].append("Time's up! Moving to voting.")
+                        room['ready_to_vote'] = []
+                        self.db_manager.update_room(room_id, room)
+                        self.emit_state_update(room_id, room)
+                        # Schedule next
+                        self.schedule_phase_transition(room_id, 'voting', discuss_time, 'vote_selection')
+                        
+                    elif next_phase == 'vote_selection':
+                        self.transition_to_vote_selection(room_id)
+                        
+                    elif next_phase == 'results':
+                        self.handle_round_transition(room_id)
+            
+            # Call transition in socketio's thread context
+            self.socketio.start_background_task(do_transition)
         
         threading.Thread(target=transition_callback, daemon=True).start()
         print(f"⏱️ SERVER: Scheduled {phase_name} -> {next_phase} in {duration_seconds}s")
