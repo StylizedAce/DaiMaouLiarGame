@@ -327,7 +327,7 @@ class GameManager:
                 room["liarVotes"] = {}
                 room["ready_to_vote"] = []
                 room["phase"] = "question"
-                room["questionPhaseStartTimestamp"] = int(time.time() * 1000) - 2000 
+                room["questionPhaseStartTimestamp"] = int(time.time() * 1000)
                 answer_time_seconds = room.get("settings", {}).get("answerTime", 60)
                 room["questionPhaseEndTimestamp"] = int(time.time() * 1000) + (answer_time_seconds * 1000)
                 room["lobby_events"].append(f"Round {next_round} has started!")
