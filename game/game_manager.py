@@ -210,6 +210,7 @@ class GameManager:
             
             self.db_manager.update_room(room_id, room)
 
+        self.schedule_phase_transition(room_id, 'vote_selection', 30, 'results')
         self.emit_state_update(room_id)
     
     def handle_round_transition(self, room_id):
@@ -334,6 +335,10 @@ class GameManager:
         # Update room in database
         self.db_manager.update_room(room_id, room)
 
+        if room.get('phase') == 'question':
+            answer_time_seconds = room.get("settings", {}).get("answerTime", 60)
+            self.schedule_phase_transition(room_id, 'question', answer_time_seconds, 'voting')
+
         self.emit_state_update(room_id)
 
     def calculate_round_scores(self, room):
@@ -426,3 +431,38 @@ class GameManager:
         """Helper to get player name by ID."""
         player = next((p for p in players if p["id"] == player_id), None)
         return player["name"] if player else "Unknown"
+    
+    def schedule_phase_transition(self, room_id, phase_name, duration_seconds, next_phase):
+        """Schedule automatic phase transition after duration."""
+        import threading
+        
+        def transition_callback():
+            time.sleep(duration_seconds)
+            
+            with self.lock:
+                room = self.db_manager.get_room(room_id)
+                if not room or room['phase'] != phase_name:
+                    return  # Room gone or phase already changed
+                
+                print(f"⏱️ SERVER: {phase_name} timer expired, transitioning to {next_phase}")
+                
+                if next_phase == 'voting':
+                    room["phase"] = "voting"
+                    room["votingPhaseStartTimestamp"] = int(time.time() * 1000)
+                    discuss_time = room.get("settings", {}).get("discussTime", 180)
+                    room["votingPhaseEndTimestamp"] = int(time.time() * 1000) + (discuss_time * 1000)
+                    room["lobby_events"].append("Time's up! Moving to voting.")
+                    room['ready_to_vote'] = []
+                    self.db_manager.update_room(room_id, room)
+                    self.emit_state_update(room_id, room)
+                    # Schedule next transition
+                    self.schedule_phase_transition(room_id, 'voting', discuss_time, 'vote_selection')
+                    
+                elif next_phase == 'vote_selection':
+                    self.transition_to_vote_selection(room_id)
+                    
+                elif next_phase == 'results':
+                    self.handle_round_transition(room_id)
+        
+        threading.Thread(target=transition_callback, daemon=True).start()
+        print(f"⏱️ SERVER: Scheduled {phase_name} -> {next_phase} in {duration_seconds}s")

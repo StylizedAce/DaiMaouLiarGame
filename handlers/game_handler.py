@@ -96,6 +96,8 @@ class GameHandler:
             
             self.db_manager.update_room(room_id, room)
 
+        self.game_manager.schedule_phase_transition(room_id, 'question', answer_time_seconds, 'voting')
+
         self.game_manager.emit_state_update(room_id, room)
     
     def handle_submit_answer(self, data):
@@ -150,6 +152,11 @@ class GameHandler:
                 
             # Update room in database
             self.db_manager.update_room(room_id, room)
+        
+        # Outside lock: schedule if we transitioned
+        if room.get('phase') == 'voting':
+            discuss_time_seconds = room.get("settings", {}).get("discussTime", 180)
+            self.game_manager.schedule_phase_transition(room_id, 'voting', discuss_time_seconds, 'vote_selection')
         
         self.game_manager.emit_state_update(room_id, room)
     
