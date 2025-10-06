@@ -89,7 +89,10 @@ class RoomHandler:
             room_language = room.get("language", "en")
             
             if requested_language != room_language:
-                emit('error_event', {'message': self.get_error_message('language_mismatch', room_language)}, room=request.sid)
+                emit('error_event', {
+                    'message': self.get_error_message('language_mismatch', requested_language),  # Use THEIR language
+                    'language': requested_language  # So they get their preferred overlay
+                }, room=request.sid)
                 return
                             
             # Join an existing room
@@ -269,7 +272,12 @@ class RoomHandler:
             'kicked': {
                 'en': 'You have been removed from the game.',
                 'ar': '.تم طردك من اللعبة'
-            }
+            },
+
+            'solo_player_kick': {  # ADD THIS
+                'en': 'You were the only player left in the game.',
+                'ar': '.كنت آخر لاعب في اللعبة'
+        }
         }
         return messages.get(key, {}).get(room_language, messages[key]['en'])
 

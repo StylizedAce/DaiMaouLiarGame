@@ -109,8 +109,14 @@ class ConnectionHandler:
                         last_player = active_players[0]
                         last_player_sid = last_player.get("socket_id")
                         if last_player_sid:
+                            room_language = room.get('language', 'en')
+                            solo_kick_message = {
+                                'en': 'You were the only player left in the game.',
+                                'ar': '.كنت آخر لاعب في اللعبة'
+                            }.get(room_language, 'You were the only player left in the game.')
+
                             self.socketio.emit('solo_player_kick', {
-                                'message': 'You were the only player left in the game.'
+                                'message': solo_kick_message
                             }, room=last_player_sid)
                         
                         self.db_manager.delete_room(room_id)
