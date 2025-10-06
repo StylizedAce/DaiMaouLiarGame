@@ -30,17 +30,6 @@ class RoomHandler:
         if not room_id or not name or not user_avatar:
             emit('error_event', {'message': 'Room ID, name, and user avatar are required.'}, room=request.sid)
             return
-        
-        existing_room = self.is_player_in_another_room(request.sid)
-        if existing_room:
-            language = data.get("language", "en")
-            already_in_game_msg = {
-                'en': 'You are already in another game.',
-                'ar': 'مايمديك تتواجد في لعبتين بنفس الوقت'
-            }.get(language, 'You are already in another game.')
-            
-            emit('error_event', {'message': already_in_game_msg}, room=request.sid)
-            return
 
         with self.game_manager.lock:
             if self.db_manager.room_exists(room_id):
@@ -86,17 +75,6 @@ class RoomHandler:
         
         if not room_id or not name or not user_avatar:
             emit('error_event', {'message': 'Room ID, name, and user avatar are required.'}, room=request.sid)
-            return
-        
-        existing_room = self.is_player_in_another_room(request.sid, room_id)
-        if existing_room:
-            requested_language = data.get("language", "en")
-            already_in_game_msg = {
-                'en': 'You are already in another game.',
-                'ar': 'مايمديك تتواجد في لعبتين بنفس الوقت'
-            }.get(requested_language, 'You are already in another game.')
-            
-            emit('error_event', {'message': already_in_game_msg}, room=request.sid)
             return
 
         with self.game_manager.lock:
