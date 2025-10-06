@@ -8,14 +8,14 @@ from flask import request
 from flask_socketio import emit, join_room, leave_room
 from utils.helpers import validate_room_data, sanitize_string, is_name_available, get_active_players
 
-
 class RoomHandler:
     """Handles room-related socket events."""
     
-    def __init__(self, db_manager, game_manager, socketio):
+    def __init__(self, db_manager, game_manager, socketio, development=True):
         self.db_manager = db_manager
         self.game_manager = game_manager
         self.socketio = socketio
+        self.development = development
     
     def handle_create_room(self, data):
         """Handle room creation request."""
@@ -30,8 +30,20 @@ class RoomHandler:
         if not room_id or not name or not user_avatar:
             emit('error_event', {'message': 'Room ID, name, and user avatar are required.'}, room=request.sid)
             return
+        
+        existing_room = self.is_player_in_another_room(request.sid)
+        if existing_room:
+            language = data.get("language", "en")
+            already_in_game_msg = {
+                'en': 'You are already in another game.',
+                'ar': 'مايمديك تتواجد في لعبتين بنفس الوقت'
+            }.get(language, 'You are already in another game.')
+            
+            emit('error_event', {'message': already_in_game_msg}, room=request.sid)
+            return
 
         with self.game_manager.lock:
+
             if self.db_manager.room_exists(room_id):
                 emit('error_event', {'message': 'Room already exists.'}, room=request.sid)
                 return
@@ -75,6 +87,17 @@ class RoomHandler:
         
         if not room_id or not name or not user_avatar:
             emit('error_event', {'message': 'Room ID, name, and user avatar are required.'}, room=request.sid)
+            return
+        
+        existing_room = self.is_player_in_another_room(request.sid, room_id)
+        if existing_room:
+            requested_language = data.get("language", "en")
+            already_in_game_msg = {
+                'en': 'You are already in another game.',
+                'ar': 'مايمديك تتواجد في لعبتين بنفس الوقت'
+            }.get(requested_language, 'You are already in another game.')
+            
+            emit('error_event', {'message': already_in_game_msg}, room=request.sid)
             return
 
         with self.game_manager.lock:
@@ -282,3 +305,24 @@ class RoomHandler:
         return messages.get(key, {}).get(room_language, messages[key]['en'])
 
 
+    def is_player_in_another_room(self, player_socket_id, target_room_id=None):
+        """Check if this socket is already in a different room."""
+        if self.development:
+            return None  # Skip check in development
+        
+        # Check all rooms
+        for room_id in self.db_manager.get_all_room_ids():
+            # Skip the room they're trying to join (for rejoin scenarios)
+            if room_id == target_room_id:
+                continue
+                
+            room = self.db_manager.get_room(room_id)
+            if not room:
+                continue
+            
+            # Check if this socket_id is in the room
+            for player in room["players"]:
+                if player.get("socket_id") == player_socket_id and not player.get("disconnected"):
+                    return room_id  # Found them in another room
+        
+        return None
