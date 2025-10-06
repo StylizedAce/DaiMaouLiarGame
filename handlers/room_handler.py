@@ -8,14 +8,14 @@ from flask import request
 from flask_socketio import emit, join_room, leave_room
 from utils.helpers import validate_room_data, sanitize_string, is_name_available, get_active_players
 
+
 class RoomHandler:
     """Handles room-related socket events."""
     
-    def __init__(self, db_manager, game_manager, socketio, development=True):
+    def __init__(self, db_manager, game_manager, socketio):
         self.db_manager = db_manager
         self.game_manager = game_manager
         self.socketio = socketio
-        self.development = development
     
     def handle_create_room(self, data):
         """Handle room creation request."""
@@ -43,7 +43,6 @@ class RoomHandler:
             return
 
         with self.game_manager.lock:
-
             if self.db_manager.room_exists(room_id):
                 emit('error_event', {'message': 'Room already exists.'}, room=request.sid)
                 return
@@ -304,12 +303,8 @@ class RoomHandler:
         }
         return messages.get(key, {}).get(room_language, messages[key]['en'])
 
-
     def is_player_in_another_room(self, player_socket_id, target_room_id=None):
         """Check if this socket is already in a different room."""
-        if self.development:
-            return None  # Skip check in development
-        
         # Check all rooms
         for room_id in self.db_manager.get_all_room_ids():
             # Skip the room they're trying to join (for rejoin scenarios)

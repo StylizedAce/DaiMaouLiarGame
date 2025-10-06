@@ -10,8 +10,6 @@ from handlers.room_handler import RoomHandler
 from handlers.game_handler import GameHandler
 from handlers.connection_handler import ConnectionHandler
 
-DEVELOPMENT = False
-
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -19,7 +17,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Initialize components
 db_manager = DatabaseManager()
 game_manager = GameManager(db_manager, socketio)
-room_handler = RoomHandler(db_manager, game_manager, socketio, DEVELOPMENT)
+room_handler = RoomHandler(db_manager, game_manager, socketio)
 game_handler = GameHandler(db_manager, game_manager, socketio)
 connection_handler = ConnectionHandler(db_manager, game_manager, socketio)
 
@@ -115,6 +113,7 @@ def index():
 
 # Application entry point
 if __name__ == "__main__":
+    DEVELOPMENT = True
     if not DEVELOPMENT:
         port = int(os.environ.get("PORT", 5000))
         socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
