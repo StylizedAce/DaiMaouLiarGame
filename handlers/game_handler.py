@@ -338,3 +338,81 @@ class GameHandler:
         
         print(f"Round transition request from player {player_id} in room {room_id}")
         self.game_manager.handle_round_transition(room_id)
+
+    def handle_new_game(self, data):
+        """Handle new game request from host."""
+        room_id = data.get("roomId")
+        player_id = data.get("playerId")
+        
+        print(f"🔄 NEW GAME request from player {player_id} in room {room_id}")
+        
+        with self.game_manager.lock:
+            room = self.db_manager.get_room(room_id)
+            if not room:
+                emit('error_event', {'message': 'Room not found.'}, room=request.sid)
+                return
+            
+            # Verify requester is the host
+            if room["host_id"] != player_id:
+                emit('error_event', {'message': 'Only the host can start a new game.'}, room=request.sid)
+                return
+            
+            print(f"✅ Host verified, resetting room {room_id}")
+            
+            # Get active players (preserve disconnected players in case they reconnect)
+            from utils.helpers import get_active_players
+            active_players = get_active_players(room["players"])
+            
+            if len(active_players) < 2:
+                emit('error_event', {'message': 'You need at least 2 players to start a new game.'}, room=request.sid)
+                return
+            
+            room_language = room.get("language", "en")
+            
+            # Reset game state while preserving players and host
+            room["phase"] = "waiting"
+            room["imposter_id"] = None
+            room["impostor_ids"] = []
+            room["roles"] = {}
+            room["questions"] = {}
+            room["answers"] = {}
+            room["votes"] = {}
+            room["results"] = {}
+            room["liarVotes"] = {}
+            room["ready_to_vote"] = []
+            room["main_question"] = None
+            room["current_round"] = 1
+            room["total_rounds"] = 5
+            room["used_question_indexes"] = []
+            room["player_scores"] = {}
+            
+            # Reset settings to defaults
+            room["settings"] = {
+                "totalRounds": 5,
+                "playerCount": 6,
+                "discussTime": 180,
+                "answerTime": 60,
+                "gameMode": "normal"
+            }
+            
+            # Clear timestamps
+            room.pop("questionPhaseStartTimestamp", None)
+            room.pop("questionPhaseEndTimestamp", None)
+            room.pop("votingPhaseStartTimestamp", None)
+            room.pop("votingPhaseEndTimestamp", None)
+            room.pop("voteSelectionStartTimestamp", None)
+            room.pop("voteSelectionEndTimestamp", None)
+            
+            # Add lobby event
+            room["lobby_events"].append("Host started a new game. Welcome back to the lobby!")
+            
+            # Update room in database
+            self.db_manager.update_room(room_id, room)
+            
+            print(f"✅ Room {room_id} reset complete")
+        
+        # Emit the new game state to all players
+        room_state = self.game_manager.get_room_state(room_id)
+        self.socketio.emit('new_game_started', {'gameState': room_state}, room=room_id)
+        
+        print(f"✅ new_game_started event emitted to room {room_id}")

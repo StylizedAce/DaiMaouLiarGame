@@ -104,6 +104,10 @@ def on_update_settings(data):
 def on_round_transition(data):
     game_handler.handle_round_transition(data)
 
+@socketio.on('new_game')
+def on_new_game(data):
+    game_handler.handle_new_game(data)
+
 
 # HTTP route
 @app.route('/', methods=['GET'])
