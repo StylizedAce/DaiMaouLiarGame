@@ -369,6 +369,9 @@ class GameHandler:
             
             room_language = room.get("language", "en")
             
+            # ✅ PRESERVE current player count
+            current_player_count = room.get("settings", {}).get("playerCount", 6)
+            
             # Reset game state while preserving players and host
             room["phase"] = "waiting"
             room["imposter_id"] = None
@@ -386,10 +389,10 @@ class GameHandler:
             room["used_question_indexes"] = []
             room["player_scores"] = {}
             
-            # Reset settings to defaults
+            # ✅ Reset settings to defaults BUT keep playerCount
             room["settings"] = {
                 "totalRounds": 5,
-                "playerCount": 6,
+                "playerCount": current_player_count,  # ← Keep current value
                 "discussTime": 180,
                 "answerTime": 60,
                 "gameMode": "normal"
@@ -409,7 +412,7 @@ class GameHandler:
             # Update room in database
             self.db_manager.update_room(room_id, room)
             
-            print(f"✅ Room {room_id} reset complete")
+            print(f"✅ Room {room_id} reset complete with {current_player_count} player slots")
         
         # Emit the new game state to all players
         room_state = self.game_manager.get_room_state(room_id)
